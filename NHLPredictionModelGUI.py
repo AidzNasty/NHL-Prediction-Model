@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 17 12:59:42 2025
-
-@author: aidanconte
-"""
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
 NHL Prediction Model - Web App Version
 Accessible via web browser - easy to share!
 """
@@ -78,57 +71,61 @@ def load_data():
         st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
         return None, None
 
-def calculate_prediction(home_team, away_team, standings):
-    """Calculate prediction for a matchup"""
+def calculate_prediction(home_team, away_team, standings, predictions_df):
+    """Calculate prediction for a matchup using Excel data"""
     home_row = standings[standings['Team'] == home_team].iloc[0]
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
-    # Calculate HomeIce Differential
-    home_home_win_pct = home_row['HomeWin%']
-    away_away_win_pct = away_row['AwayWin%']
-    homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
-
-    #homeice_diff = extract_excel_data('Aidan Conte NHL 2025-26 Prediction Model.xlsx', 'NHL HomeIce Model', 'HomeIce Differential')
+    # Try to find this matchup in the predictions data
+    matchup = predictions_df[
+        (predictions_df['Home'] == home_team) & 
+        (predictions_df['Visitor'] == away_team)
+    ]
     
-    # Get goal stats
-    home_offense = home_row.iloc[14]
-    home_defense = home_row.iloc[16]
-    away_offense = away_row.iloc[15]
-    away_defense = away_row.iloc[17]
+    # If matchup exists in Excel, use those values
+    if len(matchup) > 0:
+        game = matchup.iloc[0]
+        homeice_diff = game['HomeIce Differential']
+        predicted_winner = game['Predicted Winner']
+        win_prob = game['Strength of Win']
+    else:
+        # Fallback: calculate if matchup not in Excel
+        home_home_win_pct = home_row['HomeWin%']
+        away_away_win_pct = away_row['AwayWin%']
+        homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+        
+        # Determine winner based on HomeIce
+        if homeice_diff > 0:
+            predicted_winner = home_team
+        else:
+            predicted_winner = away_team
+        
+        win_prob = 0.5 + (abs(homeice_diff) / 12)
+        win_prob = min(0.85, max(0.52, win_prob))
     
-    # Method 1: Team-based prediction
+    # Calculate predicted score using goals for/against + HomeIce Differential
+    home_offense = home_row.iloc[14]  # Home Goals Per Game
+    home_defense = home_row.iloc[16]  # Home Goals Allowed Per Game
+    away_offense = away_row.iloc[15]  # Away Goals Per Game
+    away_defense = away_row.iloc[17]  # Away Goals Allowed Per Game
+    
+    # Base score prediction from team stats
     team_predicted_home = (home_offense + away_defense) / 2
     team_predicted_away = (away_offense + home_defense) / 2
     
-    # Method 2: HomeIce Differential-based prediction
-    avg_per_team = LEAGUE_AVG_TOTAL / 2
-    homeice_predicted_home = avg_per_team + (homeice_diff / 2)
-    homeice_predicted_away = avg_per_team - (homeice_diff / 2)
+    # Adjust by HomeIce Differential (split the differential between teams)
+    predicted_home_raw = team_predicted_home + (homeice_diff / 2)
+    predicted_away_raw = team_predicted_away - (homeice_diff / 2)
     
-    # Blended prediction
-    predicted_home_raw = (team_predicted_home * TEAM_WEIGHT) + (homeice_predicted_home * HOMEICE_WEIGHT)
-    predicted_away_raw = (team_predicted_away * TEAM_WEIGHT) + (homeice_predicted_away * HOMEICE_WEIGHT)
-    
+    # Round to whole numbers
     predicted_home = round(predicted_home_raw)
     predicted_away = round(predicted_away_raw)
     
-    # Determine winner
-    if predicted_home > predicted_away:
-        predicted_winner = home_team
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
-    elif predicted_away > predicted_home:
-        predicted_winner = away_team
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
-    else:
-        if homeice_diff > 0:
-            predicted_winner = home_team
-            predicted_home += 1
-        else:
-            predicted_winner = away_team
-            predicted_away += 1
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
-    
-    win_prob = min(0.85, max(0.52, win_prob))
+    # Ensure predicted winner has more goals
+    if predicted_winner == home_team and predicted_home <= predicted_away:
+        predicted_home = predicted_away + 1
+    elif predicted_winner == away_team and predicted_away <= predicted_home:
+        predicted_away = predicted_home + 1
     
     return {
         'predicted_winner': predicted_winner,
@@ -140,13 +137,13 @@ def calculate_prediction(home_team, away_team, standings):
         'away_row': away_row
     }
 
-def display_game_card(game, standings):
+def display_game_card(game, standings, predictions_df):
     """Display a game card with prediction"""
     home_team = game['Home']
     away_team = game['Visitor']
     game_time = game['Time']
     
-    prediction = calculate_prediction(home_team, away_team, standings)
+    prediction = calculate_prediction(home_team, away_team, standings, predictions_df)
     
     home_row = prediction['home_row']
     away_row = prediction['away_row']
@@ -225,7 +222,7 @@ def main():
             
             # Display each game
             for idx, game in todays_games.iterrows():
-                display_game_card(game, standings)
+                display_game_card(game, standings, predictions)
     
     # CUSTOM MATCHUP PAGE
     elif page == "Custom Matchup":
@@ -252,7 +249,7 @@ def main():
                 st.error("❌ Please select different teams")
             else:
                 st.markdown("---")
-                prediction = calculate_prediction(home_team, away_team, standings)
+                prediction = calculate_prediction(home_team, away_team, standings, predictions)
                 
                 # Display prediction
                 st.markdown('<div class="game-card">', unsafe_allow_html=True)
