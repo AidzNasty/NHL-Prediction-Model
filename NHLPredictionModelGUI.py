@@ -27,10 +27,10 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main {
-        background-color: #1a1a2e;
+        background-color: #FFFFFF;
     }
     .stApp {
-        background-color: #1a1a2e;
+        background-color: #FFFFFF;
     }
     h1, h2, h3 {
         color: #00d4ff !important;
