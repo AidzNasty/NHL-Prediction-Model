@@ -84,9 +84,11 @@ def calculate_prediction(home_team, away_team, standings):
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
     # Calculate HomeIce Differential
-    home_home_win_pct = home_row['HomeWin%']
-    away_away_win_pct = away_row['AwayWin%']
-    homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+    #home_home_win_pct = home_row['HomeWin%']
+    #away_away_win_pct = away_row['AwayWin%']
+    #homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+
+    homeice_diff = extract_excel_data('Aidan Conte NHL 2025-26 Prediction Model.xlsx', 'NHL HomeIce Model', 'HomeIce Differential')
     
     # Get goal stats
     home_offense = home_row.iloc[14]
