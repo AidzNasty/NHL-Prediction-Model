@@ -23,13 +23,13 @@ st.markdown("""
         background-color: #FFFFFF;
     }
     .stApp {
-        background-color: #FFFFFF;
+        background-color: #000000;
     }
     h1, h2, h3 {
         color: #00d4ff !important;
     }
     .game-card {
-        background-color: #16213e;
+        background-color: #000000;
         padding: 20px;
         border-radius: 10px;
         border: 2px solid #00d4ff;
@@ -41,7 +41,7 @@ st.markdown("""
         font-weight: bold;
     }
     .metric-card {
-        background-color: #16213e;
+        background-color: #000000;
         padding: 15px;
         border-radius: 8px;
         border: 1px solid #533483;
