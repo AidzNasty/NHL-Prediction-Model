@@ -20,16 +20,16 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main {
-        background-color: #000000;
+        background-color: #1a1a2e;
     }
     .stApp {
-        background-color: #000000;
+        background-color: #1a1a2e;
     }
     h1, h2, h3 {
         color: #00d4ff !important;
     }
     .game-card {
-        background-color: #FFFFFF;
+        background-color: #16213e;
         padding: 20px;
         border-radius: 10px;
         border: 2px solid #00d4ff;
@@ -52,7 +52,7 @@ st.markdown("""
         border: 1px solid #533483;
     }
     .model-comparison {
-        background-color: #000000;
+        background-color: #1f2937;
         padding: 15px;
         border-radius: 8px;
         margin: 10px 0px;
@@ -61,14 +61,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
 LEAGUE_AVG_TOTAL = 6.24
 TEAM_WEIGHT = 0.70
 HOMEICE_WEIGHT = 0.30
 
-@st.cache_data
+@st.cache_data(ttl=3600)  # Cache expires after 1 hour (3600 seconds)
 def load_data():
     """Load Excel data with caching"""
+    load_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
     try:
         predictions = pd.read_excel(EXCEL_FILE, sheet_name='NHL HomeIce Model', header=0)
         predictions = predictions.iloc[:, 3:].reset_index(drop=True)
@@ -76,15 +78,22 @@ def load_data():
         
         standings = pd.read_excel(EXCEL_FILE, sheet_name='Standings')
         
-        # Load ML predictions
-        ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
-        ml_predictions['date'] = pd.to_datetime(ml_predictions['date'])
+        # Try to load ML predictions (optional)
+        ml_predictions = None
+        try:
+            ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
+            ml_predictions['date'] = pd.to_datetime(ml_predictions['date'])
+            st.sidebar.success("✅ ML Model loaded")
+        except Exception as ml_error:
+            st.sidebar.warning("⚠️ ML Model not available")
+            st.sidebar.caption(f"Reason: {str(ml_error)}")
+            ml_predictions = pd.DataFrame()  # Empty dataframe
         
-        return predictions, standings, ml_predictions
+        return predictions, standings, ml_predictions, load_timestamp
     except Exception as e:
         st.error(f"❌ Error loading Excel file: {e}")
-        st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
-        return None, None, None
+        st.info("Make sure 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx' is in the same folder as this script")
+        return None, None, None, None
 
 def calculate_prediction(home_team, away_team, standings):
     """Calculate prediction for a matchup"""
@@ -148,6 +157,10 @@ def calculate_prediction(home_team, away_team, standings):
 
 def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
     """Get ML prediction for a specific game"""
+    # Check if ML predictions are available
+    if ml_predictions is None or len(ml_predictions) == 0:
+        return {'has_ml': False}
+    
     # Convert game_date to datetime if it's not already
     if isinstance(game_date, str):
         game_date = pd.to_datetime(game_date)
@@ -318,9 +331,9 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
 
 def main():
     # Load data
-    predictions, standings, ml_predictions = load_data()
+    predictions, standings, ml_predictions, load_timestamp = load_data()
     
-    if predictions is None or standings is None or ml_predictions is None:
+    if predictions is None or standings is None:
         return
     
     # Title
@@ -329,7 +342,24 @@ def main():
     
     # Sidebar for navigation
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Model Performance", "Model Comparison"])
+    
+    # Add refresh button
+    if st.sidebar.button("🔄 Refresh Data", help="Clear cache and reload Excel file"):
+        st.cache_data.clear()
+        st.rerun()
+    
+    st.sidebar.caption(f"Data loaded: {load_timestamp}")
+    st.sidebar.markdown("---")
+    
+    # Determine available pages based on ML data
+    has_ml_data = ml_predictions is not None and len(ml_predictions) > 0
+    
+    if has_ml_data:
+        pages = ["Today's Games", "Custom Matchup", "Model Performance", "Model Comparison"]
+    else:
+        pages = ["Today's Games", "Custom Matchup", "Model Performance"]
+    
+    page = st.sidebar.radio("Select Page", pages)
     
     # TODAY'S GAMES PAGE
     if page == "Today's Games":
@@ -458,55 +488,58 @@ def main():
         st.markdown("---")
         st.markdown("### 🤖 ML Model")
         
-        ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
-        
-        if len(ml_completed) == 0:
-            st.info("No completed games yet for ML model")
+        if ml_predictions is None or len(ml_predictions) == 0:
+            st.info("⚠️ ML Model predictions not available. Upload an Excel file with 'ML Prediction Model' sheet to see ML performance.")
         else:
-            ml_completed = ml_completed.sort_values('date')
+            ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
             
-            # Overall stats
-            ml_total = len(ml_completed)
-            ml_correct = (ml_completed['ml_correct'] == 1).sum()
-            ml_accuracy = (ml_correct / ml_total * 100)
-            
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown("#### 📈 Overall Results")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Games", ml_total)
-            
-            with col2:
-                st.metric("Correct", ml_correct)
-            
-            with col3:
-                st.metric("Wrong", ml_total - ml_correct)
-            
-            with col4:
-                st.metric("Accuracy", f"{ml_accuracy:.1f}%")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Average confidence on correct vs incorrect
-            if ml_total > 0:
-                st.markdown("---")
-                correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
-                incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
+            if len(ml_completed) == 0:
+                st.info("No completed games yet for ML model")
+            else:
+                ml_completed = ml_completed.sort_values('date')
+                
+                # Overall stats
+                ml_total = len(ml_completed)
+                ml_correct = (ml_completed['ml_correct'] == 1).sum()
+                ml_accuracy = (ml_correct / ml_total * 100)
                 
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.markdown("#### 🎯 Confidence Analysis")
+                st.markdown("#### 📈 Overall Results")
                 
-                col1, col2 = st.columns(2)
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.metric("Avg Confidence (Correct)", f"{correct_conf:.1%}")
+                    st.metric("Total Games", ml_total)
                 
                 with col2:
-                    st.metric("Avg Confidence (Incorrect)", f"{incorrect_conf:.1%}")
+                    st.metric("Correct", ml_correct)
+                
+                with col3:
+                    st.metric("Wrong", ml_total - ml_correct)
+                
+                with col4:
+                    st.metric("Accuracy", f"{ml_accuracy:.1f}%")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Average confidence on correct vs incorrect
+                if ml_total > 0:
+                    st.markdown("---")
+                    correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
+                    incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
+                    
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.markdown("#### 🎯 Confidence Analysis")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric("Avg Confidence (Correct)", f"{correct_conf:.1%}")
+                    
+                    with col2:
+                        st.metric("Avg Confidence (Incorrect)", f"{incorrect_conf:.1%}")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
     
     # MODEL COMPARISON PAGE
     elif page == "Model Comparison":
@@ -609,15 +642,30 @@ def main():
     # Footer
     st.sidebar.markdown("---")
     st.sidebar.markdown("### About")
-    st.sidebar.info("""
-    **NHL Prediction Model 2025-26**
     
-    🔄 **Two Models:**
-    - 📊 Excel: HomeIce Differential (70% team stats, 30% home ice)
-    - 🤖 ML: Random Forest machine learning model
-    
-    Compare predictions and performance across both approaches!
-    """)
+    if ml_predictions is not None and len(ml_predictions) > 0:
+        st.sidebar.info("""
+        **NHL Prediction Model 2025-26**
+        
+        🔄 **Two Models:**
+        - 📊 Excel: HomeIce Differential (70% team stats, 30% home ice)
+        - 🤖 ML: Random Forest machine learning model
+        
+        Compare predictions and performance across both approaches!
+        """)
+    else:
+        st.sidebar.info("""
+        **NHL Prediction Model 2025-26**
+        
+        📊 **Excel Model**
+        Using HomeIce Differential and team statistics to predict game outcomes.
+        
+        Model blends:
+        - 70% team-based stats
+        - 30% HomeIce advantage
+        
+        💡 Add 'ML Prediction Model' sheet to Excel file to enable ML predictions!
+        """)
 
 if __name__ == "__main__":
     main()
