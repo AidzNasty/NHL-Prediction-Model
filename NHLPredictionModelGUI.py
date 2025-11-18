@@ -730,13 +730,13 @@ def main():
                 
                 # Result filter
                 if result_filter == "Both Correct":
-                    filtered_games = filtered_games[(filtered_games['ml_correct'] == 1) & (filtered_games['excel_correct'] == 1)]
+                    filtered_games = filtered_games[(filtered_games['ml_correct'] == "YES") & (filtered_games['excel_correct'] == "YES")]
                 elif result_filter == "Both Wrong":
-                    filtered_games = filtered_games[(filtered_games['ml_correct'] == 0) & (filtered_games['excel_correct'] == 0)]
+                    filtered_games = filtered_games[(filtered_games['ml_correct'] == "NO") & (filtered_games['excel_correct'] == "NO")]
                 elif result_filter == "Only Excel Correct":
-                    filtered_games = filtered_games[(filtered_games['excel_correct'] == 1) & (filtered_games['ml_correct'] == 0)]
+                    filtered_games = filtered_games[(filtered_games['excel_correct'] == "YES") & (filtered_games['ml_correct'] == "NO")]
                 elif result_filter == "Only ML Correct":
-                    filtered_games = filtered_games[(filtered_games['ml_correct'] == 1) & (filtered_games['excel_correct'] == 0)]
+                    filtered_games = filtered_games[(filtered_games['ml_correct'] == "YES") & (filtered_games['excel_correct'] == "NO")]
                 elif result_filter == "Models Disagreed":
                     filtered_games = filtered_games[filtered_games['ml_predicted_winner'] != filtered_games['excel_predicted_winner']]
                 
@@ -773,8 +773,8 @@ def main():
                     display_data = []
                     for idx, game in filtered_games.iterrows():
                         # Format predictions with correct/incorrect indicators
-                        excel_indicator = "✅" if game['excel_correct'] == 1 else "❌"
-                        ml_indicator = "✅" if game['ml_correct'] == 1 else "❌"
+                        excel_indicator = "✅" if game['excel_correct'] == "YES" else "❌"
+                        ml_indicator = "✅" if game['ml_correct'] == "YES" else "❌"
                         
                         # Agreement indicator
                         agree = "✅" if game['ml_predicted_winner'] == game['excel_predicted_winner'] else "⚠️"
@@ -883,7 +883,7 @@ def main():
                 
                 # Overall stats
                 ml_total = len(ml_completed)
-                ml_correct = (ml_completed['ml_correct'] == 1).sum()
+                ml_correct = (ml_completed['ml_correct'] == "YES").sum()
                 ml_accuracy = (ml_correct / ml_total * 100)
                 
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -908,8 +908,8 @@ def main():
                 # Average confidence on correct vs incorrect
                 if ml_total > 0:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
-                    incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
+                    correct_conf = ml_completed[ml_completed['ml_correct'] == "YES"]['ml_confidence'].mean()
+                    incorrect_conf = ml_completed[ml_completed['ml_correct'] == "NO"]['ml_confidence'].mean()
                     
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.markdown("#### 🎯 Confidence Analysis")
@@ -940,8 +940,8 @@ def main():
             
             # Overall comparison
             ml_total = len(ml_completed)
-            ml_correct = (ml_completed['ml_correct'] == 1).sum()
-            excel_correct = (ml_completed['excel_correct'] == 1).sum()
+            ml_correct = (ml_completed['ml_correct'] == "YES").sum()
+            excel_correct = (ml_completed['excel_correct'] == "YES").sum()
             
             ml_accuracy = (ml_correct / ml_total * 100)
             excel_accuracy = (excel_correct / ml_total * 100)
@@ -974,10 +974,10 @@ def main():
             
             # Agreement analysis
             st.markdown("<br>", unsafe_allow_html=True)
-            both_correct = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 1)).sum()
-            both_wrong = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 0)).sum()
-            ml_only = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 0)).sum()
-            excel_only = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 1)).sum()
+            both_correct = ((ml_completed['ml_correct'] == "YES") & (ml_completed['excel_correct'] == "YES")).sum()
+            both_wrong = ((ml_completed['ml_correct'] == "NO") & (ml_completed['excel_correct'] == "NO")).sum()
+            ml_only = ((ml_completed['ml_correct'] == "YES") & (ml_completed['excel_correct'] == "NO")).sum()
+            excel_only = ((ml_completed['ml_correct'] == "NO") & (ml_completed['excel_correct'] == "YES")).sum()
             
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
             st.markdown("### 🤝 Model Agreement")
