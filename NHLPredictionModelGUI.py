@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Created on Mon Nov 17 12:59:42 2025
+
+@author: aidanconte
+"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
 NHL Prediction Model - Web App Version with ML Integration
 Accessible via web browser - easy to share!
 """
@@ -30,7 +37,7 @@ st.markdown("""
     
     /* Typography */
     h1, h2, h3 {
-        color: #2c3e50 !important;
+        color: #000000 !important;
         text-align: center;
     }
     h1 {
@@ -157,7 +164,17 @@ st.markdown("""
     
     /* Streamlit default text color */
     .stMarkdown p, .stMarkdown li {
-        color: #333333;
+        color: #000000;
+    }
+    
+    /* All text elements black */
+    body, p, span, div, label, caption, .stText, .stMarkdown {
+        color: #000000 !important;
+    }
+    
+    /* Captions and labels */
+    .stCaption, label {
+        color: #000000 !important;
     }
     
     /* Better table styling */
@@ -169,7 +186,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
+EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 LEAGUE_AVG_TOTAL = 6.24
 TEAM_WEIGHT = 0.70
 HOMEICE_WEIGHT = 0.30
@@ -371,7 +388,7 @@ def display_game_card(game, standings, ml_predictions):
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
         # Header with time - centered
-        st.markdown(f"<div style='text-align: center; color: #666666; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: #000000; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
         
         # Teams display - centered and responsive
         col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
@@ -383,7 +400,7 @@ def display_game_card(game, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #000000;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
@@ -477,7 +494,7 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #000000;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
@@ -575,7 +592,7 @@ def main():
     # Title - Centered
     st.markdown("<div class='centered-container'>", unsafe_allow_html=True)
     st.title("🏒 NHL Prediction Model 2025-26")
-    st.markdown(f"<div style='text-align: center; color: #666666; margin-bottom: 2rem;'>📅 {datetime.now().strftime('%A, %B %d, %Y')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; color: #000000; margin-bottom: 2rem;'>📅 {datetime.now().strftime('%A, %B %d, %Y')}</div>", unsafe_allow_html=True)
     
     # Sidebar for navigation
     st.sidebar.title("🧭 Navigation")
@@ -655,7 +672,7 @@ def main():
                 away_team = st.selectbox("**Away Team**", [""] + teams, key="away")
             
             with col_vs:
-                st.markdown("<div style='text-align: center; padding-top: 2rem; color: #666666;'><h3>@</h3></div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align: center; padding-top: 2rem; color: #000000;'><h3>@</h3></div>", unsafe_allow_html=True)
             
             with col2:
                 home_team = st.selectbox("**Home Team**", [""] + teams, key="home")
