@@ -1011,8 +1011,8 @@ def main():
             
             display_data = []
             for idx, game in recent_games.iterrows():
-                excel_result = "✅" if game['excel_correct'] == 1 else "❌"
-                ml_result = "✅" if game['ml_correct'] == 1 else "❌"
+                excel_result = "✅" if game['excel_correct'] == "YES" else "❌"
+                ml_result = "✅" if game['ml_correct'] == "YES" else "❌"
                 
                 display_data.append({
                     "Date": game['date'].strftime('%Y-%m-%d'),
