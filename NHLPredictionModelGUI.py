@@ -263,7 +263,7 @@ def load_data():
         return predictions, standings, ml_predictions, load_timestamp
     except Exception as e:
         st.error(f"❌ Error loading Excel file: {e}")
-        st.info("Make sure 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx' is in the same folder as this script")
+        st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
         return None, None, None, None
 
 def calculate_prediction(home_team, away_team, standings):
