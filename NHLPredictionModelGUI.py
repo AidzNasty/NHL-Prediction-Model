@@ -16,46 +16,118 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS
+# Custom CSS - Modern, Responsive Design
 st.markdown("""
     <style>
+    /* Main App Styling */
     .main {
-        background-color: #1a1a2e;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        padding: 2rem 1rem;
     }
     .stApp {
-        background-color: #1a1a2e;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     }
+    
+    /* Typography */
     h1, h2, h3 {
         color: #00d4ff !important;
+        text-align: center;
     }
+    h1 {
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Centered Container */
+    .centered-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+    }
+    
+    /* Game Card - Modern Design */
     .game-card {
-        background-color: #16213e;
-        padding: 20px;
-        border-radius: 10px;
-        border: 2px solid #00d4ff;
-        margin: 10px 0px;
+        background: linear-gradient(135deg, #16213e 0%, #0f1626 100%);
+        padding: 2rem;
+        border-radius: 16px;
+        border: 2px solid rgba(0, 212, 255, 0.3);
+        margin: 1.5rem 0;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+    .game-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0, 212, 255, 0.2);
+        border-color: rgba(0, 212, 255, 0.5);
+    }
+    
+    /* Winner Styling */
     .winner {
         color: #4caf50;
-        font-size: 24px;
-        font-weight: bold;
+        font-size: 1.5rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 0.75rem;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 8px;
+        margin: 0.5rem 0;
     }
     .ml-winner {
         color: #ff6b6b;
-        font-size: 24px;
-        font-weight: bold;
+        font-size: 1.5rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 0.75rem;
+        background: rgba(255, 107, 107, 0.1);
+        border-radius: 8px;
+        margin: 0.5rem 0;
     }
+    
+    /* Metric Card */
     .metric-card {
-        background-color: #16213e;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #533483;
+        background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid rgba(83, 52, 131, 0.3);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        margin: 1rem 0;
     }
-    .model-comparison {
-        background-color: #1f2937;
-        padding: 15px;
-        border-radius: 8px;
-        margin: 10px 0px;
+    
+    /* Prediction Box */
+    .prediction-box {
+        background: rgba(0, 212, 255, 0.05);
+        padding: 1.25rem;
+        border-radius: 10px;
+        border-left: 4px solid #00d4ff;
+        margin: 1rem 0;
+    }
+    
+    /* Team Display */
+    .team-display {
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .game-card {
+            padding: 1.5rem;
+        }
+        h1 {
+            font-size: 1.75rem;
+        }
+        h2 {
+            font-size: 1.5rem;
+        }
+    }
+    
+    /* Spacing Improvements */
+    .stMarkdown {
+        margin-bottom: 1rem;
+    }
+    
+    /* Sidebar Improvements */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -92,7 +164,7 @@ def load_data():
         return predictions, standings, ml_predictions, load_timestamp
     except Exception as e:
         st.error(f"❌ Error loading Excel file: {e}")
-        st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
+        st.info("Make sure 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx' is in the same folder as this script")
         return None, None, None, None
 
 def calculate_prediction(home_team, away_team, standings):
@@ -187,7 +259,7 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
         return {'has_ml': False}
 
 def display_game_card(game, standings, ml_predictions):
-    """Display a game card with both model predictions"""
+    """Display a game card with both model predictions - Modern Layout"""
     home_team = game['Home']
     away_team = game['Visitor']
     game_time = game['Time']
@@ -200,61 +272,75 @@ def display_game_card(game, standings, ml_predictions):
     home_row = excel_prediction['home_row']
     away_row = excel_prediction['away_row']
     
-    # Create card
+    # Create card with container
     with st.container():
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
-        # Time
-        st.markdown(f"🕐 **{game_time}**")
+        # Header with time - centered
+        st.markdown(f"<div style='text-align: center; color: #00d4ff; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
         
-        # Teams
-        col1, col2, col3 = st.columns([2, 1, 2])
+        # Teams display - centered and responsive
+        col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
         
         with col1:
+            st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
             st.markdown(f"### {away_team}")
-            st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} ({int(away_row['PTS'])} pts)")
+            st.caption(f"**{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}** ({int(away_row['PTS'])} pts)")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col_vs:
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
-            st.markdown("### @")
-        
-        with col3:
+            st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
             st.markdown(f"### {home_team}")
-            st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} ({int(home_row['PTS'])} pts)")
+            st.caption(f"**{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}** ({int(home_row['PTS'])} pts)")
+            st.markdown("</div>", unsafe_allow_html=True)
         
+        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        # Show both predictions side by side
-        col_excel, col_ml = st.columns(2)
+        # Predictions side by side - responsive columns
+        col_excel, col_ml = st.columns(2, gap="large")
         
         with col_excel:
-            st.markdown("#### 📊 Excel Model")
-            st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-            st.markdown(f"**Win Probability:** {excel_prediction['win_prob']:.1%}")
-            st.markdown(f"**Predicted Score:** {away_team} {excel_prediction['predicted_away']} - {excel_prediction['predicted_home']} {home_team}")
-            st.caption(f"HomeIce Diff: {excel_prediction['homeice_diff']:+.3f}")
+            with st.container():
+                st.markdown("#### 📊 Excel Model")
+                st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Win Probability:** `{excel_prediction['win_prob']:.1%}`")
+                st.markdown(f"**Predicted Score:**")
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                st.caption(f"HomeIce Diff: `{excel_prediction['homeice_diff']:+.3f}`")
         
         with col_ml:
-            if ml_prediction['has_ml']:
+            with st.container():
                 st.markdown("#### 🤖 ML Model")
-                st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f"**Win Probability:** {ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']:.1%}")
-                st.markdown(f"**Predicted Score:** {away_team} {ml_prediction['ml_predicted_away']} - {ml_prediction['ml_predicted_home']} {home_team}")
-                st.caption(f"Confidence: {ml_prediction['ml_confidence']:.1%}")
-            else:
-                st.markdown("#### 🤖 ML Model")
-                st.info("No ML prediction available")
+                if ml_prediction['has_ml']:
+                    st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
+                    ml_win_prob = ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']
+                    st.markdown(f"**Win Probability:** `{ml_win_prob:.1%}`")
+                    st.markdown(f"**Predicted Score:**")
+                    st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{ml_prediction['ml_predicted_away']}</strong> - <strong>{ml_prediction['ml_predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                    st.caption(f"Confidence: `{ml_prediction['ml_confidence']:.1%}`")
+                else:
+                    st.info("No ML prediction available")
         
-        # Agreement indicator
+        # Agreement indicator - centered
         if ml_prediction['has_ml']:
-            if excel_prediction['predicted_winner'] == ml_prediction['ml_predicted_winner']:
-                st.success("✅ Both models agree on winner")
-            else:
-                st.warning("⚠️ Models disagree on winner")
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_agreement, _, _ = st.columns([1, 2, 1])
+            with col_agreement:
+                if excel_prediction['predicted_winner'] == ml_prediction['ml_predicted_winner']:
+                    st.success("✅ Both models agree on winner")
+                else:
+                    st.warning("⚠️ Models disagree on winner")
         
         st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
 def display_custom_matchup(home_team, away_team, standings, ml_predictions):
-    """Display custom matchup with predictions"""
+    """Display custom matchup with predictions - Modern Layout"""
     excel_prediction = calculate_prediction(home_team, away_team, standings)
     
     # Try to find ML prediction (might not exist for custom matchups)
@@ -264,70 +350,86 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
     home_row = excel_prediction['home_row']
     away_row = excel_prediction['away_row']
     
-    st.markdown('<div class="game-card">', unsafe_allow_html=True)
-    
-    # Teams
-    col1, col2, col3 = st.columns([2, 1, 2])
-    
-    with col1:
-        st.markdown(f"### {away_team}")
-        st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} ({int(away_row['PTS'])} pts)")
-    
-    with col2:
-        st.markdown("### @")
-    
-    with col3:
-        st.markdown(f"### {home_team}")
-        st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} ({int(home_row['PTS'])} pts)")
-    
-    st.markdown("---")
-    
-    # Show predictions
-    col_excel, col_ml = st.columns(2)
-    
-    with col_excel:
-        st.markdown("#### 📊 Excel Model")
-        st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-        st.markdown(f"**Win Probability:** {excel_prediction['win_prob']:.1%}")
-        st.markdown(f"**Predicted Score:** {away_team} {excel_prediction['predicted_away']} - {excel_prediction['predicted_home']} {home_team}")
-        st.caption(f"HomeIce Diff: {excel_prediction['homeice_diff']:+.3f}")
-    
-    with col_ml:
-        if ml_prediction['has_ml']:
-            st.markdown("#### 🤖 ML Model")
-            st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
-            st.markdown(f"**Win Probability:** {ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']:.1%}")
-            st.markdown(f"**Predicted Score:** {away_team} {ml_prediction['ml_predicted_away']} - {ml_prediction['ml_predicted_home']} {home_team}")
-            st.caption(f"Confidence: {ml_prediction['ml_confidence']:.1%}")
-        else:
-            st.markdown("#### 🤖 ML Model")
-            st.info("No ML prediction available for this matchup")
-    
-    # Team stats comparison
-    st.markdown("---")
-    st.markdown("### Team Statistics")
-    
-    stats_data = {
-        "Stat": ["Record", "Points", "Win %", "Goals Per Game", "Goals Allowed"],
-        away_team: [
-            f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}",
-            int(away_row['PTS']),
-            f"{away_row['AwayWin%']:.1%}",
-            f"{away_row.iloc[15]:.2f}",
-            f"{away_row.iloc[17]:.2f}"
-        ],
-        home_team: [
-            f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}",
-            int(home_row['PTS']),
-            f"{home_row['HomeWin%']:.1%}",
-            f"{home_row.iloc[14]:.2f}",
-            f"{home_row.iloc[16]:.2f}"
-        ]
-    }
-    
-    st.table(stats_data)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="game-card">', unsafe_allow_html=True)
+        
+        # Teams display - centered
+        col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
+        
+        with col1:
+            st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
+            st.markdown(f"### {away_team}")
+            st.caption(f"**{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}** ({int(away_row['PTS'])} pts)")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col_vs:
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem;'><h2>@</h2></div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
+            st.markdown(f"### {home_team}")
+            st.caption(f"**{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}** ({int(home_row['PTS'])} pts)")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Show predictions side by side
+        col_excel, col_ml = st.columns(2, gap="large")
+        
+        with col_excel:
+            with st.container():
+                st.markdown("#### 📊 Excel Model")
+                st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Win Probability:** `{excel_prediction['win_prob']:.1%}`")
+                st.markdown(f"**Predicted Score:**")
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                st.caption(f"HomeIce Diff: `{excel_prediction['homeice_diff']:+.3f}`")
+        
+        with col_ml:
+            with st.container():
+                st.markdown("#### 🤖 ML Model")
+                if ml_prediction['has_ml']:
+                    st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
+                    ml_win_prob = ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']
+                    st.markdown(f"**Win Probability:** `{ml_win_prob:.1%}`")
+                    st.markdown(f"**Predicted Score:**")
+                    st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{ml_prediction['ml_predicted_away']}</strong> - <strong>{ml_prediction['ml_predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                    st.caption(f"Confidence: `{ml_prediction['ml_confidence']:.1%}`")
+                else:
+                    st.info("No ML prediction available for this matchup")
+        
+        # Team stats comparison
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 📊 Team Statistics")
+        
+        # Center the table
+        col_table, _, _ = st.columns([2, 1, 2])
+        with col_table:
+            stats_data = {
+                "Stat": ["Record", "Points", "Win %", "Goals Per Game", "Goals Allowed"],
+                away_team: [
+                    f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}",
+                    int(away_row['PTS']),
+                    f"{away_row['AwayWin%']:.1%}",
+                    f"{away_row.iloc[15]:.2f}",
+                    f"{away_row.iloc[17]:.2f}"
+                ],
+                home_team: [
+                    f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}",
+                    int(home_row['PTS']),
+                    f"{home_row['HomeWin%']:.1%}",
+                    f"{home_row.iloc[14]:.2f}",
+                    f"{home_row.iloc[16]:.2f}"
+                ]
+            }
+            st.dataframe(stats_data, use_container_width=True, hide_index=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
 def main():
     # Load data
@@ -336,19 +438,20 @@ def main():
     if predictions is None or standings is None:
         return
     
-    # Title
+    # Title - Centered
+    st.markdown("<div class='centered-container'>", unsafe_allow_html=True)
     st.title("🏒 NHL Prediction Model 2025-26")
-    st.markdown(f"### 📅 {datetime.now().strftime('%A, %B %d, %Y')}")
+    st.markdown(f"<div style='text-align: center; color: #00d4ff; margin-bottom: 2rem;'>📅 {datetime.now().strftime('%A, %B %d, %Y')}</div>", unsafe_allow_html=True)
     
     # Sidebar for navigation
-    st.sidebar.title("Navigation")
+    st.sidebar.title("🧭 Navigation")
     
     # Add refresh button
-    if st.sidebar.button("🔄 Refresh Data", help="Clear cache and reload Excel file"):
+    if st.sidebar.button("🔄 Refresh Data", help="Clear cache and reload Excel file", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     
-    st.sidebar.caption(f"Data loaded: {load_timestamp}")
+    st.sidebar.caption(f"📊 Data loaded: {load_timestamp}")
     st.sidebar.markdown("---")
     
     # Determine available pages based on ML data
@@ -363,65 +466,87 @@ def main():
     
     # TODAY'S GAMES PAGE
     if page == "Today's Games":
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         # Get today's games
         today = datetime.now().date()
         todays_games = predictions[predictions['Date'].dt.date == today].copy()
         
         if len(todays_games) == 0:
-            st.warning("⚠️ No games scheduled for today")
+            # Center the warning
+            col_warn, _, _ = st.columns([2, 1, 2])
+            with col_warn:
+                st.warning("⚠️ No games scheduled for today")
             
             # Show upcoming games
             future_games = predictions[predictions['Date'].dt.date > today].copy()
             if len(future_games) > 0:
-                st.subheader("📅 Next Upcoming Games:")
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.subheader("📅 Next Upcoming Games")
                 future_games = future_games.sort_values('Date').head(5)
                 
-                for idx, game in future_games.iterrows():
-                    date_str = game['Date'].strftime('%A, %B %d')
-                    st.info(f"{game['Visitor']} @ {game['Home']} - {date_str}")
+                # Center upcoming games list
+                col_upcoming, _, _ = st.columns([2, 1, 2])
+                with col_upcoming:
+                    for idx, game in future_games.iterrows():
+                        date_str = game['Date'].strftime('%A, %B %d')
+                        st.info(f"**{game['Visitor']} @ {game['Home']}** - {date_str}")
         else:
             st.subheader(f"🏒 Today's Games ({len(todays_games)} matchups)")
+            st.markdown("<br>", unsafe_allow_html=True)
             
             # Sort by time
             todays_games = todays_games.sort_values('Time')
             
-            # Display each game
+            # Display each game in centered container
             for idx, game in todays_games.iterrows():
-                display_game_card(game, standings, ml_predictions)
+                col_game, _, _ = st.columns([3, 1, 3])
+                with col_game:
+                    display_game_card(game, standings, ml_predictions)
     
     # CUSTOM MATCHUP PAGE
     elif page == "Custom Matchup":
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("⚙️ Custom Matchup Prediction")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         teams = sorted(standings['Team'].tolist())
         
-        col1, col2, col3 = st.columns([2, 1, 2])
-        
-        with col1:
-            away_team = st.selectbox("Away Team", [""] + teams, key="away")
-        
-        with col2:
-            st.markdown("### @")
-        
-        with col3:
-            home_team = st.selectbox("Home Team", [""] + teams, key="home")
-        
-        if st.button("🎯 Generate Prediction", type="primary"):
-            if not away_team or not home_team:
-                st.warning("⚠️ Please select both teams")
-            elif away_team == home_team:
-                st.error("❌ Please select different teams")
-            else:
-                st.markdown("---")
-                display_custom_matchup(home_team, away_team, standings, ml_predictions)
+        # Center the team selectors
+        col_outer1, col_inner, col_outer2 = st.columns([1, 3, 1])
+        with col_inner:
+            col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
+            
+            with col1:
+                away_team = st.selectbox("**Away Team**", [""] + teams, key="away")
+            
+            with col_vs:
+                st.markdown("<div style='text-align: center; padding-top: 2rem;'><h3>@</h3></div>", unsafe_allow_html=True)
+            
+            with col2:
+                home_team = st.selectbox("**Home Team**", [""] + teams, key="home")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Center the button
+            col_btn, _, _ = st.columns([2, 1, 2])
+            with col_btn:
+                if st.button("🎯 Generate Prediction", type="primary", use_container_width=True):
+                    if not away_team or not home_team:
+                        st.warning("⚠️ Please select both teams")
+                    elif away_team == home_team:
+                        st.error("❌ Please select different teams")
+                    else:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        col_result, _, _ = st.columns([3, 1, 3])
+                        with col_result:
+                            display_custom_matchup(home_team, away_team, standings, ml_predictions)
     
     # MODEL PERFORMANCE PAGE
     elif page == "Model Performance":
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📊 Model Performance Statistics")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         # Excel Model Performance
         st.markdown("### 📊 Excel Model")
@@ -429,40 +554,44 @@ def main():
         completed = predictions[predictions[correct_col].isin(['YES', 'NO'])].copy()
         
         if len(completed) == 0:
-            st.info("No completed games yet for Excel model")
+            col_info, _, _ = st.columns([2, 1, 2])
+            with col_info:
+                st.info("No completed games yet for Excel model")
         else:
             completed = completed.sort_values('Date')
             
-            # Overall stats
+            # Overall stats - centered
             total_games = len(completed)
             correct_games = (completed[correct_col] == 'YES').sum()
             overall_accuracy = (correct_games / total_games * 100)
             
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown("#### 📈 Overall Results")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Games", total_games)
-            
-            with col2:
-                st.metric("Correct", correct_games)
-            
-            with col3:
-                st.metric("Wrong", total_games - correct_games)
-            
-            with col4:
-                st.metric("Accuracy", f"{overall_accuracy:.1f}%")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            col_metrics, _, _ = st.columns([3, 1, 3])
+            with col_metrics:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown("#### 📈 Overall Results")
+                
+                col1, col2, col3, col4 = st.columns(4, gap="small")
+                
+                with col1:
+                    st.metric("Total Games", total_games)
+                
+                with col2:
+                    st.metric("Correct", correct_games)
+                
+                with col3:
+                    st.metric("Wrong", total_games - correct_games)
+                
+                with col4:
+                    st.metric("Accuracy", f"{overall_accuracy:.1f}%")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Last 20 games
             today = datetime.now()
             past_games = completed[completed['Date'] < today]
             
             if len(past_games) >= 20:
-                st.markdown("---")
+                st.markdown("<br>", unsafe_allow_html=True)
                 last_20 = past_games.tail(20)
                 correct_20 = (last_20[correct_col] == 'YES').sum()
                 accuracy_20 = (correct_20 / 20 * 100)
@@ -470,91 +599,106 @@ def main():
                 first_date = last_20['Date'].min().strftime('%Y-%m-%d')
                 last_date = last_20['Date'].max().strftime('%Y-%m-%d')
                 
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.markdown("#### 📊 Last 20 Games")
-                st.caption(f"{first_date} to {last_date}")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.metric("Correct", f"{correct_20}/20")
-                
-                with col2:
-                    st.metric("Accuracy", f"{accuracy_20:.1f}%")
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        # ML Model Performance
-        st.markdown("---")
-        st.markdown("### 🤖 ML Model")
-        
-        if ml_predictions is None or len(ml_predictions) == 0:
-            st.info("⚠️ ML Model predictions not available. Upload an Excel file with 'ML Prediction Model' sheet to see ML performance.")
-        else:
-            ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
-            
-            if len(ml_completed) == 0:
-                st.info("No completed games yet for ML model")
-            else:
-                ml_completed = ml_completed.sort_values('date')
-                
-                # Overall stats
-                ml_total = len(ml_completed)
-                ml_correct = (ml_completed['ml_correct'] == 1).sum()
-                ml_accuracy = (ml_correct / ml_total * 100)
-                
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.markdown("#### 📈 Overall Results")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Total Games", ml_total)
-                
-                with col2:
-                    st.metric("Correct", ml_correct)
-                
-                with col3:
-                    st.metric("Wrong", ml_total - ml_correct)
-                
-                with col4:
-                    st.metric("Accuracy", f"{ml_accuracy:.1f}%")
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Average confidence on correct vs incorrect
-                if ml_total > 0:
-                    st.markdown("---")
-                    correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
-                    incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
-                    
+                col_last20, _, _ = st.columns([3, 1, 3])
+                with col_last20:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.markdown("#### 🎯 Confidence Analysis")
+                    st.markdown("#### 📊 Last 20 Games")
+                    st.caption(f"{first_date} to {last_date}")
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.metric("Avg Confidence (Correct)", f"{correct_conf:.1%}")
+                        st.metric("Correct", f"{correct_20}/20")
                     
                     with col2:
-                        st.metric("Avg Confidence (Incorrect)", f"{incorrect_conf:.1%}")
+                        st.metric("Accuracy", f"{accuracy_20:.1f}%")
                     
                     st.markdown('</div>', unsafe_allow_html=True)
+        
+        # ML Model Performance
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 🤖 ML Model")
+        
+        if ml_predictions is None or len(ml_predictions) == 0:
+            col_info, _, _ = st.columns([2, 1, 2])
+            with col_info:
+                st.info("⚠️ ML Model predictions not available. Upload an Excel file with 'ML Prediction Model' sheet to see ML performance.")
+        else:
+            ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
+            
+            if len(ml_completed) == 0:
+                col_info, _, _ = st.columns([2, 1, 2])
+                with col_info:
+                    st.info("No completed games yet for ML model")
+            else:
+                ml_completed = ml_completed.sort_values('date')
+                
+                # Overall stats - centered
+                ml_total = len(ml_completed)
+                ml_correct = (ml_completed['ml_correct'] == 1).sum()
+                ml_accuracy = (ml_correct / ml_total * 100)
+                
+                col_ml_metrics, _, _ = st.columns([3, 1, 3])
+                with col_ml_metrics:
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.markdown("#### 📈 Overall Results")
+                    
+                    col1, col2, col3, col4 = st.columns(4, gap="small")
+                    
+                    with col1:
+                        st.metric("Total Games", ml_total)
+                    
+                    with col2:
+                        st.metric("Correct", ml_correct)
+                    
+                    with col3:
+                        st.metric("Wrong", ml_total - ml_correct)
+                    
+                    with col4:
+                        st.metric("Accuracy", f"{ml_accuracy:.1f}%")
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Average confidence on correct vs incorrect
+                if ml_total > 0:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
+                    incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
+                    
+                    col_conf, _, _ = st.columns([3, 1, 3])
+                    with col_conf:
+                        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                        st.markdown("#### 🎯 Confidence Analysis")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.metric("Avg Confidence (Correct)", f"{correct_conf:.1%}")
+                        
+                        with col2:
+                            st.metric("Avg Confidence (Incorrect)", f"{incorrect_conf:.1%}")
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
     
     # MODEL COMPARISON PAGE
     elif page == "Model Comparison":
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("🔄 Excel vs ML Model Comparison")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         # Get games where both models have predictions
         ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
         
         if len(ml_completed) == 0:
-            st.info("No completed games to compare yet")
+            col_info, _, _ = st.columns([2, 1, 2])
+            with col_info:
+                st.info("No completed games to compare yet")
         else:
             ml_completed = ml_completed.sort_values('date')
             
-            # Overall comparison
+            # Overall comparison - centered
             ml_total = len(ml_completed)
             ml_correct = (ml_completed['ml_correct'] == 1).sum()
             excel_correct = (ml_completed['excel_correct'] == 1).sum()
@@ -562,65 +706,70 @@ def main():
             ml_accuracy = (ml_correct / ml_total * 100)
             excel_accuracy = (excel_correct / ml_total * 100)
             
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown("### 📊 Head-to-Head Comparison")
-            st.caption(f"Based on {ml_total} completed games")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Excel Model Accuracy", f"{excel_accuracy:.1f}%")
-                st.caption(f"{excel_correct}/{ml_total} correct")
-            
-            with col2:
-                st.metric("ML Model Accuracy", f"{ml_accuracy:.1f}%")
-                st.caption(f"{ml_correct}/{ml_total} correct")
-            
-            with col3:
-                diff = ml_accuracy - excel_accuracy
-                st.metric("Difference", f"{diff:+.1f}%")
-                if diff > 0:
-                    st.caption("🤖 ML Model leads")
-                elif diff < 0:
-                    st.caption("📊 Excel Model leads")
-                else:
-                    st.caption("🤝 Tied")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            col_comparison, _, _ = st.columns([3, 1, 3])
+            with col_comparison:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown("### 📊 Head-to-Head Comparison")
+                st.caption(f"Based on {ml_total} completed games")
+                
+                col1, col2, col3 = st.columns(3, gap="medium")
+                
+                with col1:
+                    st.metric("Excel Model Accuracy", f"{excel_accuracy:.1f}%")
+                    st.caption(f"{excel_correct}/{ml_total} correct")
+                
+                with col2:
+                    st.metric("ML Model Accuracy", f"{ml_accuracy:.1f}%")
+                    st.caption(f"{ml_correct}/{ml_total} correct")
+                
+                with col3:
+                    diff = ml_accuracy - excel_accuracy
+                    st.metric("Difference", f"{diff:+.1f}%")
+                    if diff > 0:
+                        st.caption("🤖 ML Model leads")
+                    elif diff < 0:
+                        st.caption("📊 Excel Model leads")
+                    else:
+                        st.caption("🤝 Tied")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Agreement analysis
-            st.markdown("---")
+            st.markdown("<br>", unsafe_allow_html=True)
             both_correct = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 1)).sum()
             both_wrong = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 0)).sum()
             ml_only = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 0)).sum()
             excel_only = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 1)).sum()
             
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown("### 🤝 Model Agreement")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Both Correct", both_correct)
-                st.caption(f"{both_correct/ml_total*100:.1f}%")
-            
-            with col2:
-                st.metric("Both Wrong", both_wrong)
-                st.caption(f"{both_wrong/ml_total*100:.1f}%")
-            
-            with col3:
-                st.metric("ML Only Correct", ml_only)
-                st.caption(f"{ml_only/ml_total*100:.1f}%")
-            
-            with col4:
-                st.metric("Excel Only Correct", excel_only)
-                st.caption(f"{excel_only/ml_total*100:.1f}%")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            col_agreement, _, _ = st.columns([3, 1, 3])
+            with col_agreement:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown("### 🤝 Model Agreement")
+                
+                col1, col2, col3, col4 = st.columns(4, gap="small")
+                
+                with col1:
+                    st.metric("Both Correct", both_correct)
+                    st.caption(f"{both_correct/ml_total*100:.1f}%")
+                
+                with col2:
+                    st.metric("Both Wrong", both_wrong)
+                    st.caption(f"{both_wrong/ml_total*100:.1f}%")
+                
+                with col3:
+                    st.metric("ML Only Correct", ml_only)
+                    st.caption(f"{ml_only/ml_total*100:.1f}%")
+                
+                with col4:
+                    st.metric("Excel Only Correct", excel_only)
+                    st.caption(f"{excel_only/ml_total*100:.1f}%")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Recent games breakdown
-            st.markdown("---")
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("### 📋 Recent Games Breakdown")
+            st.markdown("<br>", unsafe_allow_html=True)
             
             recent_games = ml_completed.tail(10)
             
@@ -637,7 +786,13 @@ def main():
                     "ML": f"{ml_result} {game['ml_predicted_winner']}"
                 })
             
-            st.table(display_data)
+            # Center the table
+            col_table, _, _ = st.columns([2, 1, 2])
+            with col_table:
+                st.dataframe(display_data, use_container_width=True, hide_index=True)
+    
+    # Close centered container
+    st.markdown("</div>", unsafe_allow_html=True)
     
     # Footer
     st.sidebar.markdown("---")
