@@ -178,7 +178,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
+EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 LEAGUE_AVG_TOTAL = 6.24
 TEAM_WEIGHT = 0.70
 HOMEICE_WEIGHT = 0.30
