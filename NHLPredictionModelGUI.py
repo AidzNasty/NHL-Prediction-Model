@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NHL Prediction Model - Web App Version
+NHL Prediction Model - Web App Version with ML Integration
 Accessible via web browser - easy to share!
 """
 
@@ -20,7 +20,7 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main {
-        background-color: #FFFFFF;
+        background-color: #000000;
     }
     .stApp {
         background-color: #000000;
@@ -29,7 +29,7 @@ st.markdown("""
         color: #00d4ff !important;
     }
     .game-card {
-        background-color: #000000;
+        background-color: #FFFFFF;
         padding: 20px;
         border-radius: 10px;
         border: 2px solid #00d4ff;
@@ -40,11 +40,22 @@ st.markdown("""
         font-size: 24px;
         font-weight: bold;
     }
+    .ml-winner {
+        color: #ff6b6b;
+        font-size: 24px;
+        font-weight: bold;
+    }
     .metric-card {
-        background-color: #000000;
+        background-color: #16213e;
         padding: 15px;
         border-radius: 8px;
         border: 1px solid #533483;
+    }
+    .model-comparison {
+        background-color: #000000;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 0px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -65,67 +76,65 @@ def load_data():
         
         standings = pd.read_excel(EXCEL_FILE, sheet_name='Standings')
         
-        return predictions, standings
+        # Load ML predictions
+        ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
+        ml_predictions['date'] = pd.to_datetime(ml_predictions['date'])
+        
+        return predictions, standings, ml_predictions
     except Exception as e:
         st.error(f"❌ Error loading Excel file: {e}")
         st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
-        return None, None
+        return None, None, None
 
-def calculate_prediction(home_team, away_team, standings, predictions_df):
-    """Calculate prediction for a matchup using Excel data"""
+def calculate_prediction(home_team, away_team, standings):
+    """Calculate prediction for a matchup"""
     home_row = standings[standings['Team'] == home_team].iloc[0]
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
-    # Try to find this matchup in the predictions data
-    matchup = predictions_df[
-        (predictions_df['Home'] == home_team) & 
-        (predictions_df['Visitor'] == away_team)
-    ]
+    # Calculate HomeIce Differential
+    home_home_win_pct = home_row['HomeWin%']
+    away_away_win_pct = away_row['AwayWin%']
+    homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
     
-    # If matchup exists in Excel, use those values
-    if len(matchup) > 0:
-        game = matchup.iloc[0]
-        homeice_diff = game['HomeIce Differential']
-        predicted_winner = game['Predicted Winner']
-        win_prob = game['Strength of Win']
-    else:
-        # Fallback: calculate if matchup not in Excel
-        home_home_win_pct = home_row['HomeWin%']
-        away_away_win_pct = away_row['AwayWin%']
-        homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
-        
-        # Determine winner based on HomeIce
-        if homeice_diff > 0:
-            predicted_winner = home_team
-        else:
-            predicted_winner = away_team
-        
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
-        win_prob = min(0.85, max(0.52, win_prob))
+    # Get goal stats
+    home_offense = home_row.iloc[14]
+    home_defense = home_row.iloc[16]
+    away_offense = away_row.iloc[15]
+    away_defense = away_row.iloc[17]
     
-    # Calculate predicted score using goals for/against + HomeIce Differential
-    home_offense = home_row.iloc[14]  # Home Goals Per Game
-    home_defense = home_row.iloc[16]  # Home Goals Allowed Per Game
-    away_offense = away_row.iloc[15]  # Away Goals Per Game
-    away_defense = away_row.iloc[17]  # Away Goals Allowed Per Game
-    
-    # Base score prediction from team stats
+    # Method 1: Team-based prediction
     team_predicted_home = (home_offense + away_defense) / 2
     team_predicted_away = (away_offense + home_defense) / 2
     
-    # Adjust by HomeIce Differential (split the differential between teams)
-    predicted_home_raw = team_predicted_home + (homeice_diff / 2)
-    predicted_away_raw = team_predicted_away - (homeice_diff / 2)
+    # Method 2: HomeIce Differential-based prediction
+    avg_per_team = LEAGUE_AVG_TOTAL / 2
+    homeice_predicted_home = avg_per_team + (homeice_diff / 2)
+    homeice_predicted_away = avg_per_team - (homeice_diff / 2)
     
-    # Round to whole numbers
+    # Blended prediction
+    predicted_home_raw = (team_predicted_home * TEAM_WEIGHT) + (homeice_predicted_home * HOMEICE_WEIGHT)
+    predicted_away_raw = (team_predicted_away * TEAM_WEIGHT) + (homeice_predicted_away * HOMEICE_WEIGHT)
+    
     predicted_home = round(predicted_home_raw)
     predicted_away = round(predicted_away_raw)
     
-    # Ensure predicted winner has more goals
-    if predicted_winner == home_team and predicted_home <= predicted_away:
-        predicted_home = predicted_away + 1
-    elif predicted_winner == away_team and predicted_away <= predicted_home:
-        predicted_away = predicted_home + 1
+    # Determine winner
+    if predicted_home > predicted_away:
+        predicted_winner = home_team
+        win_prob = 0.5 + (abs(homeice_diff) / 12)
+    elif predicted_away > predicted_home:
+        predicted_winner = away_team
+        win_prob = 0.5 + (abs(homeice_diff) / 12)
+    else:
+        if homeice_diff > 0:
+            predicted_winner = home_team
+            predicted_home += 1
+        else:
+            predicted_winner = away_team
+            predicted_away += 1
+        win_prob = 0.5 + (abs(homeice_diff) / 12)
+    
+    win_prob = min(0.85, max(0.52, win_prob))
     
     return {
         'predicted_winner': predicted_winner,
@@ -137,16 +146,46 @@ def calculate_prediction(home_team, away_team, standings, predictions_df):
         'away_row': away_row
     }
 
-def display_game_card(game, standings, predictions_df):
-    """Display a game card with prediction"""
+def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
+    """Get ML prediction for a specific game"""
+    # Convert game_date to datetime if it's not already
+    if isinstance(game_date, str):
+        game_date = pd.to_datetime(game_date)
+    
+    # Find matching game in ML predictions
+    ml_game = ml_predictions[
+        (ml_predictions['home_team'] == home_team) & 
+        (ml_predictions['away_team'] == away_team) &
+        (ml_predictions['date'].dt.date == game_date.date())
+    ]
+    
+    if len(ml_game) > 0:
+        ml_game = ml_game.iloc[0]
+        return {
+            'ml_predicted_winner': ml_game['ml_predicted_winner'],
+            'ml_home_win_prob': ml_game['ml_home_win_prob'],
+            'ml_away_win_prob': ml_game['ml_away_win_prob'],
+            'ml_confidence': ml_game['ml_confidence'],
+            'ml_predicted_home': ml_game['ml_predicted_home_score'],
+            'ml_predicted_away': ml_game['ml_predicted_away_score'],
+            'has_ml': True
+        }
+    else:
+        return {'has_ml': False}
+
+def display_game_card(game, standings, ml_predictions):
+    """Display a game card with both model predictions"""
     home_team = game['Home']
     away_team = game['Visitor']
     game_time = game['Time']
+    game_date = game['Date']
     
-    prediction = calculate_prediction(home_team, away_team, standings, predictions_df)
+    # Get predictions from both models
+    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    ml_prediction = get_ml_prediction(home_team, away_team, game_date, ml_predictions)
     
-    home_row = prediction['home_row']
-    away_row = prediction['away_row']
+    home_row = excel_prediction['home_row']
+    away_row = excel_prediction['away_row']
     
     # Create card
     with st.container():
@@ -171,19 +210,117 @@ def display_game_card(game, standings, predictions_df):
         
         st.markdown("---")
         
-        # Prediction
-        st.markdown(f'<div class="winner">🏆 {prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-        st.markdown(f"**Win Probability:** {prediction['win_prob']:.1%}")
-        st.markdown(f"**Predicted Score:** {away_team} {prediction['predicted_away']} - {prediction['predicted_home']} {home_team}")
-        st.caption(f"HomeIce Differential: {prediction['homeice_diff']:+.3f}")
+        # Show both predictions side by side
+        col_excel, col_ml = st.columns(2)
+        
+        with col_excel:
+            st.markdown("#### 📊 Excel Model")
+            st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
+            st.markdown(f"**Win Probability:** {excel_prediction['win_prob']:.1%}")
+            st.markdown(f"**Predicted Score:** {away_team} {excel_prediction['predicted_away']} - {excel_prediction['predicted_home']} {home_team}")
+            st.caption(f"HomeIce Diff: {excel_prediction['homeice_diff']:+.3f}")
+        
+        with col_ml:
+            if ml_prediction['has_ml']:
+                st.markdown("#### 🤖 ML Model")
+                st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Win Probability:** {ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']:.1%}")
+                st.markdown(f"**Predicted Score:** {away_team} {ml_prediction['ml_predicted_away']} - {ml_prediction['ml_predicted_home']} {home_team}")
+                st.caption(f"Confidence: {ml_prediction['ml_confidence']:.1%}")
+            else:
+                st.markdown("#### 🤖 ML Model")
+                st.info("No ML prediction available")
+        
+        # Agreement indicator
+        if ml_prediction['has_ml']:
+            if excel_prediction['predicted_winner'] == ml_prediction['ml_predicted_winner']:
+                st.success("✅ Both models agree on winner")
+            else:
+                st.warning("⚠️ Models disagree on winner")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
+def display_custom_matchup(home_team, away_team, standings, ml_predictions):
+    """Display custom matchup with predictions"""
+    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    
+    # Try to find ML prediction (might not exist for custom matchups)
+    today = datetime.now()
+    ml_prediction = get_ml_prediction(home_team, away_team, today, ml_predictions)
+    
+    home_row = excel_prediction['home_row']
+    away_row = excel_prediction['away_row']
+    
+    st.markdown('<div class="game-card">', unsafe_allow_html=True)
+    
+    # Teams
+    col1, col2, col3 = st.columns([2, 1, 2])
+    
+    with col1:
+        st.markdown(f"### {away_team}")
+        st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} ({int(away_row['PTS'])} pts)")
+    
+    with col2:
+        st.markdown("### @")
+    
+    with col3:
+        st.markdown(f"### {home_team}")
+        st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} ({int(home_row['PTS'])} pts)")
+    
+    st.markdown("---")
+    
+    # Show predictions
+    col_excel, col_ml = st.columns(2)
+    
+    with col_excel:
+        st.markdown("#### 📊 Excel Model")
+        st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
+        st.markdown(f"**Win Probability:** {excel_prediction['win_prob']:.1%}")
+        st.markdown(f"**Predicted Score:** {away_team} {excel_prediction['predicted_away']} - {excel_prediction['predicted_home']} {home_team}")
+        st.caption(f"HomeIce Diff: {excel_prediction['homeice_diff']:+.3f}")
+    
+    with col_ml:
+        if ml_prediction['has_ml']:
+            st.markdown("#### 🤖 ML Model")
+            st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
+            st.markdown(f"**Win Probability:** {ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']:.1%}")
+            st.markdown(f"**Predicted Score:** {away_team} {ml_prediction['ml_predicted_away']} - {ml_prediction['ml_predicted_home']} {home_team}")
+            st.caption(f"Confidence: {ml_prediction['ml_confidence']:.1%}")
+        else:
+            st.markdown("#### 🤖 ML Model")
+            st.info("No ML prediction available for this matchup")
+    
+    # Team stats comparison
+    st.markdown("---")
+    st.markdown("### Team Statistics")
+    
+    stats_data = {
+        "Stat": ["Record", "Points", "Win %", "Goals Per Game", "Goals Allowed"],
+        away_team: [
+            f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}",
+            int(away_row['PTS']),
+            f"{away_row['AwayWin%']:.1%}",
+            f"{away_row.iloc[15]:.2f}",
+            f"{away_row.iloc[17]:.2f}"
+        ],
+        home_team: [
+            f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}",
+            int(home_row['PTS']),
+            f"{home_row['HomeWin%']:.1%}",
+            f"{home_row.iloc[14]:.2f}",
+            f"{home_row.iloc[16]:.2f}"
+        ]
+    }
+    
+    st.table(stats_data)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
 def main():
     # Load data
-    predictions, standings = load_data()
+    predictions, standings, ml_predictions = load_data()
     
-    if predictions is None or standings is None:
+    if predictions is None or standings is None or ml_predictions is None:
         return
     
     # Title
@@ -192,7 +329,7 @@ def main():
     
     # Sidebar for navigation
     st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Model Performance"])
+    page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Model Performance", "Model Comparison"])
     
     # TODAY'S GAMES PAGE
     if page == "Today's Games":
@@ -222,7 +359,7 @@ def main():
             
             # Display each game
             for idx, game in todays_games.iterrows():
-                display_game_card(game, standings, predictions)
+                display_game_card(game, standings, ml_predictions)
     
     # CUSTOM MATCHUP PAGE
     elif page == "Custom Matchup":
@@ -249,71 +386,20 @@ def main():
                 st.error("❌ Please select different teams")
             else:
                 st.markdown("---")
-                prediction = calculate_prediction(home_team, away_team, standings, predictions)
-                
-                # Display prediction
-                st.markdown('<div class="game-card">', unsafe_allow_html=True)
-                
-                home_row = prediction['home_row']
-                away_row = prediction['away_row']
-                
-                # Teams
-                col1, col2, col3 = st.columns([2, 1, 2])
-                
-                with col1:
-                    st.markdown(f"### {away_team}")
-                    st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} ({int(away_row['PTS'])} pts)")
-                
-                with col2:
-                    st.markdown("### @")
-                
-                with col3:
-                    st.markdown(f"### {home_team}")
-                    st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} ({int(home_row['PTS'])} pts)")
-                
-                st.markdown("---")
-                
-                # Prediction
-                st.markdown(f'<div class="winner">🏆 {prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f"**Win Probability:** {prediction['win_prob']:.1%}")
-                st.markdown(f"**Predicted Score:** {away_team} {prediction['predicted_away']} - {prediction['predicted_home']} {home_team}")
-                st.caption(f"HomeIce Differential: {prediction['homeice_diff']:+.3f}")
-                
-                # Team stats comparison
-                st.markdown("### Team Statistics")
-                
-                stats_data = {
-                    "Stat": ["Record", "Points", "Win %", "Goals Per Game", "Goals Allowed"],
-                    away_team: [
-                        f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}",
-                        int(away_row['PTS']),
-                        f"{away_row['AwayWin%']:.1%}",
-                        f"{away_row.iloc[15]:.2f}",
-                        f"{away_row.iloc[17]:.2f}"
-                    ],
-                    home_team: [
-                        f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}",
-                        int(home_row['PTS']),
-                        f"{home_row['HomeWin%']:.1%}",
-                        f"{home_row.iloc[14]:.2f}",
-                        f"{home_row.iloc[16]:.2f}"
-                    ]
-                }
-                
-                st.table(stats_data)
-                
-                st.markdown('</div>', unsafe_allow_html=True)
+                display_custom_matchup(home_team, away_team, standings, ml_predictions)
     
     # MODEL PERFORMANCE PAGE
     elif page == "Model Performance":
         st.markdown("---")
         st.subheader("📊 Model Performance Statistics")
         
+        # Excel Model Performance
+        st.markdown("### 📊 Excel Model")
         correct_col = 'Locked Correct'
         completed = predictions[predictions[correct_col].isin(['YES', 'NO'])].copy()
         
         if len(completed) == 0:
-            st.info("No completed games yet")
+            st.info("No completed games yet for Excel model")
         else:
             completed = completed.sort_values('Date')
             
@@ -323,7 +409,7 @@ def main():
             overall_accuracy = (correct_games / total_games * 100)
             
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown("### 📈 Overall Results")
+            st.markdown("#### 📈 Overall Results")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -355,7 +441,7 @@ def main():
                 last_date = last_20['Date'].max().strftime('%Y-%m-%d')
                 
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.markdown("### 📊 Last 20 Games")
+                st.markdown("#### 📊 Last 20 Games")
                 st.caption(f"{first_date} to {last_date}")
                 
                 col1, col2 = st.columns(2)
@@ -367,21 +453,155 @@ def main():
                     st.metric("Accuracy", f"{accuracy_20:.1f}%")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
+        
+        # ML Model Performance
+        st.markdown("---")
+        st.markdown("### 🤖 ML Model")
+        
+        ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
+        
+        if len(ml_completed) == 0:
+            st.info("No completed games yet for ML model")
+        else:
+            ml_completed = ml_completed.sort_values('date')
+            
+            # Overall stats
+            ml_total = len(ml_completed)
+            ml_correct = (ml_completed['ml_correct'] == 1).sum()
+            ml_accuracy = (ml_correct / ml_total * 100)
+            
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown("#### 📈 Overall Results")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Games", ml_total)
+            
+            with col2:
+                st.metric("Correct", ml_correct)
+            
+            with col3:
+                st.metric("Wrong", ml_total - ml_correct)
+            
+            with col4:
+                st.metric("Accuracy", f"{ml_accuracy:.1f}%")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Average confidence on correct vs incorrect
+            if ml_total > 0:
+                st.markdown("---")
+                correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
+                incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
+                
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown("#### 🎯 Confidence Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("Avg Confidence (Correct)", f"{correct_conf:.1%}")
+                
+                with col2:
+                    st.metric("Avg Confidence (Incorrect)", f"{incorrect_conf:.1%}")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+    
+    # MODEL COMPARISON PAGE
+    elif page == "Model Comparison":
+        st.markdown("---")
+        st.subheader("🔄 Excel vs ML Model Comparison")
+        
+        # Get games where both models have predictions
+        ml_completed = ml_predictions[ml_predictions['ml_correct'].notna()].copy()
+        
+        if len(ml_completed) == 0:
+            st.info("No completed games to compare yet")
+        else:
+            ml_completed = ml_completed.sort_values('date')
+            
+            # Overall comparison
+            ml_total = len(ml_completed)
+            ml_correct = (ml_completed['ml_correct'] == 1).sum()
+            excel_correct = (ml_completed['excel_correct'] == 1).sum()
+            
+            ml_accuracy = (ml_correct / ml_total * 100)
+            excel_accuracy = (excel_correct / ml_total * 100)
+            
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown("### 📊 Head-to-Head Comparison")
+            st.caption(f"Based on {ml_total} completed games")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Excel Model Accuracy", f"{excel_accuracy:.1f}%")
+                st.caption(f"{excel_correct}/{ml_total} correct")
+            
+            with col2:
+                st.metric("ML Model Accuracy", f"{ml_accuracy:.1f}%")
+                st.caption(f"{ml_correct}/{ml_total} correct")
+            
+            with col3:
+                diff = ml_accuracy - excel_accuracy
+                st.metric("Difference", f"{diff:+.1f}%")
+                if diff > 0:
+                    st.caption("🤖 ML Model leads")
+                elif diff < 0:
+                    st.caption("📊 Excel Model leads")
+                else:
+                    st.caption("🤝 Tied")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Agreement analysis
+            st.markdown("---")
+            both_correct = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 1)).sum()
+            both_wrong = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 0)).sum()
+            ml_only = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 0)).sum()
+            excel_only = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 1)).sum()
+            
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            st.markdown("### 🤝 Model Agreement")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Both Correct", both_correct)
+                st.caption(f"{both_correct/ml_total*100:.1f}%")
+            
+            with col2:
+                st.metric("Both Wrong", both_wrong)
+                st.caption(f"{both_wrong/ml_total*100:.1f}%")
+            
+            with col3:
+                st.metric("ML Only Correct", ml_only)
+                st.caption(f"{ml_only/ml_total*100:.1f}%")
+            
+            with col4:
+                st.metric("Excel Only Correct", excel_only)
+                st.caption(f"{excel_only/ml_total*100:.1f}%")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
             
             # Recent games breakdown
             st.markdown("---")
             st.markdown("### 📋 Recent Games Breakdown")
             
-            recent_games = past_games.tail(10)
+            recent_games = ml_completed.tail(10)
             
             display_data = []
             for idx, game in recent_games.iterrows():
-                result = "✅" if game[correct_col] == 'YES' else "❌"
+                excel_result = "✅" if game['excel_correct'] == 1 else "❌"
+                ml_result = "✅" if game['ml_correct'] == 1 else "❌"
+                
                 display_data.append({
-                    "Date": game['Date'].strftime('%Y-%m-%d'),
-                    "Matchup": f"{game['Visitor']} @ {game['Home']}",
-                    "Prediction": game['Locked Prediction'],
-                    "Result": result
+                    "Date": game['date'].strftime('%Y-%m-%d'),
+                    "Matchup": f"{game['away_team']} @ {game['home_team']}",
+                    "Winner": game['actual_winner'],
+                    "Excel": f"{excel_result} {game['excel_predicted_winner']}",
+                    "ML": f"{ml_result} {game['ml_predicted_winner']}"
                 })
             
             st.table(display_data)
@@ -392,11 +612,11 @@ def main():
     st.sidebar.info("""
     **NHL Prediction Model 2025-26**
     
-    Using HomeIce Differential and team statistics to predict game outcomes.
+    🔄 **Two Models:**
+    - 📊 Excel: HomeIce Differential (70% team stats, 30% home ice)
+    - 🤖 ML: Random Forest machine learning model
     
-    Model blends:
-    - 70% team-based stats
-    - 30% HomeIce advantage
+    Compare predictions and performance across both approaches!
     """)
 
 if __name__ == "__main__":
