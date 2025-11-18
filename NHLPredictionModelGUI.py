@@ -749,9 +749,9 @@ def main():
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
-                    excel_correct = (filtered_games['excel_correct'] == 1).sum()
-                    ml_correct = (filtered_games['ml_correct'] == 1).sum()
-                    both_correct = ((filtered_games['excel_correct'] == 1) & (filtered_games['ml_correct'] == 1)).sum()
+                    excel_correct = (filtered_games['excel_correct'] == "YES").sum()
+                    ml_correct = (filtered_games['ml_correct'] == "YES").sum()
+                    both_correct = ((filtered_games['excel_correct'] == "YES") & (filtered_games['ml_correct'] == "YES")).sum()
                     agreement = (filtered_games['ml_predicted_winner'] == filtered_games['excel_predicted_winner']).sum()
                     
                     with col1:
