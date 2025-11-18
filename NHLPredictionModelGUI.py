@@ -156,7 +156,7 @@ st.markdown("""
     
     /* Streamlit default text color */
     .stMarkdown p, .stMarkdown li {
-        color: #333333;
+        color: #000000;
     }
     
     /* Better table styling */
@@ -376,7 +376,7 @@ def display_game_card(game, standings, ml_predictions):
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
         # Header with time - centered
-        st.markdown(f"<div style='text-align: center; color: #666666; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: #000000; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
         
         # Teams display - centered and responsive
         col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
@@ -388,7 +388,7 @@ def display_game_card(game, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #000000;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
@@ -480,7 +480,7 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #000000;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
