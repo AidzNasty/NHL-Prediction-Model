@@ -16,88 +16,90 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS - Modern, Responsive Design
+# Custom CSS - Modern, Neutral Design
 st.markdown("""
     <style>
-    /* Main App Styling */
+    /* Main App Styling - Neutral Colors */
     .main {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        background: #f5f5f5;
         padding: 2rem 1rem;
     }
     .stApp {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        background: #f5f5f5;
     }
     
     /* Typography */
     h1, h2, h3 {
-        color: #00d4ff !important;
+        color: #2c3e50 !important;
         text-align: center;
     }
     h1 {
         margin-bottom: 0.5rem;
     }
     
-    /* Centered Container */
+    /* Centered Container - Wider for Desktop */
     .centered-container {
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 0 1rem;
+        padding: 0 2rem;
     }
     
-    /* Game Card - Modern Design */
+    /* Game Card - Neutral Design */
     .game-card {
-        background: linear-gradient(135deg, #16213e 0%, #0f1626 100%);
+        background: #ffffff;
         padding: 2rem;
-        border-radius: 16px;
-        border: 2px solid rgba(0, 212, 255, 0.3);
+        border-radius: 12px;
+        border: 1px solid #e0e0e0;
         margin: 1.5rem 0;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     .game-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 12px 40px rgba(0, 212, 255, 0.2);
-        border-color: rgba(0, 212, 255, 0.5);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        border-color: #d0d0d0;
     }
     
-    /* Winner Styling */
+    /* Winner Styling - Good Green */
     .winner {
-        color: #4caf50;
+        color: #2e7d32;
         font-size: 1.5rem;
         font-weight: 700;
         text-align: center;
         padding: 0.75rem;
-        background: rgba(76, 175, 80, 0.1);
+        background: #e8f5e9;
         border-radius: 8px;
         margin: 0.5rem 0;
+        border: 2px solid #4caf50;
     }
     .ml-winner {
-        color: #ff6b6b;
+        color: #2e7d32;
         font-size: 1.5rem;
         font-weight: 700;
         text-align: center;
         padding: 0.75rem;
-        background: rgba(255, 107, 107, 0.1);
+        background: #e8f5e9;
         border-radius: 8px;
         margin: 0.5rem 0;
+        border: 2px solid #4caf50;
     }
     
-    /* Metric Card */
+    /* Metric Card - Neutral */
     .metric-card {
-        background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+        background: #ffffff;
         padding: 1.5rem;
         border-radius: 12px;
-        border: 1px solid rgba(83, 52, 131, 0.3);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         margin: 1rem 0;
     }
     
     /* Prediction Box */
     .prediction-box {
-        background: rgba(0, 212, 255, 0.05);
+        background: #fafafa;
         padding: 1.25rem;
         border-radius: 10px;
-        border-left: 4px solid #00d4ff;
+        border-left: 4px solid #9e9e9e;
         margin: 1rem 0;
     }
     
@@ -105,6 +107,24 @@ st.markdown("""
     .team-display {
         text-align: center;
         padding: 1rem;
+    }
+    
+    /* Probability Badge */
+    .prob-badge {
+        display: inline-block;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    
+    /* Differential Badge */
+    .diff-badge {
+        display: inline-block;
+        padding: 0.3rem 0.6rem;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.85rem;
     }
     
     /* Responsive Design */
@@ -118,6 +138,10 @@ st.markdown("""
         h2 {
             font-size: 1.5rem;
         }
+        .centered-container {
+            max-width: 100%;
+            padding: 0 1rem;
+        }
     }
     
     /* Spacing Improvements */
@@ -125,18 +149,88 @@ st.markdown("""
         margin-bottom: 1rem;
     }
     
-    /* Sidebar Improvements */
+    /* Sidebar Improvements - Neutral */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
+        background: #ffffff;
+        border-right: 1px solid #e0e0e0;
+    }
+    
+    /* Streamlit default text color */
+    .stMarkdown p, .stMarkdown li {
+        color: #333333;
+    }
+    
+    /* Better table styling */
+    .stDataFrame {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
 LEAGUE_AVG_TOTAL = 6.24
 TEAM_WEIGHT = 0.70
 HOMEICE_WEIGHT = 0.30
+
+def get_probability_color(probability):
+    """
+    Convert probability (0-1) to color from red (weak) to green (strong)
+    Returns hex color and background color
+    """
+    # Normalize probability to 0-1 range (assuming 0.5-1.0 is the range)
+    # For win probability, 0.5 is weakest, 1.0 is strongest
+    normalized = (probability - 0.5) / 0.5  # Maps 0.5->0, 1.0->1
+    normalized = max(0, min(1, normalized))  # Clamp to 0-1
+    
+    # Red to Green gradient
+    # Red: #d32f2f, Yellow: #fbc02d, Green: #388e3c
+    if normalized < 0.5:
+        # Red to Yellow
+        t = normalized * 2
+        r = int(211 + (251 - 211) * t)  # 211 -> 251
+        g = int(47 + (192 - 47) * t)    # 47 -> 192
+        b = int(47 + (45 - 47) * t)     # 47 -> 45
+    else:
+        # Yellow to Green
+        t = (normalized - 0.5) * 2
+        r = int(251 + (56 - 251) * t)   # 251 -> 56
+        g = int(192 + (142 - 192) * t)  # 192 -> 142
+        b = int(45 + (60 - 45) * t)     # 45 -> 60
+    
+    color = f"#{r:02x}{g:02x}{b:02x}"
+    bg_color = f"rgba({r}, {g}, {b}, 0.15)"
+    return color, bg_color
+
+def get_differential_color(differential):
+    """
+    Convert homeice differential to color from red (negative/weak) to green (positive/strong)
+    Returns hex color and background color
+    """
+    # Normalize differential to 0-1 range
+    # Assuming range is roughly -3 to +3, map to 0-1
+    max_diff = 3.0
+    normalized = (differential + max_diff) / (2 * max_diff)  # Maps -3->0, +3->1
+    normalized = max(0, min(1, normalized))  # Clamp to 0-1
+    
+    # Red to Green gradient
+    if normalized < 0.5:
+        # Red to Yellow
+        t = normalized * 2
+        r = int(211 + (251 - 211) * t)
+        g = int(47 + (192 - 47) * t)
+        b = int(47 + (45 - 47) * t)
+    else:
+        # Yellow to Green
+        t = (normalized - 0.5) * 2
+        r = int(251 + (56 - 251) * t)
+        g = int(192 + (142 - 192) * t)
+        b = int(45 + (60 - 45) * t)
+    
+    color = f"#{r:02x}{g:02x}{b:02x}"
+    bg_color = f"rgba({r}, {g}, {b}, 0.15)"
+    return color, bg_color
 
 @st.cache_data(ttl=3600)  # Cache expires after 1 hour (3600 seconds)
 def load_data():
@@ -277,7 +371,7 @@ def display_game_card(game, standings, ml_predictions):
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
         # Header with time - centered
-        st.markdown(f"<div style='text-align: center; color: #00d4ff; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; color: #666666; font-size: 1.1rem; margin-bottom: 1.5rem;'>🕐 {game_time}</div>", unsafe_allow_html=True)
         
         # Teams display - centered and responsive
         col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
@@ -289,7 +383,7 @@ def display_game_card(game, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
@@ -301,6 +395,10 @@ def display_game_card(game, standings, ml_predictions):
         st.markdown("---")
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # Get colors for probability and differential
+        prob_color, prob_bg = get_probability_color(excel_prediction['win_prob'])
+        diff_color, diff_bg = get_differential_color(excel_prediction['homeice_diff'])
+        
         # Predictions side by side - responsive columns
         col_excel, col_ml = st.columns(2, gap="large")
         
@@ -308,10 +406,17 @@ def display_game_card(game, standings, ml_predictions):
             with st.container():
                 st.markdown("#### 📊 Excel Model")
                 st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f"**Win Probability:** `{excel_prediction['win_prob']:.1%}`")
+                
+                # Win Probability with color
+                st.markdown(f"**Win Probability:**")
+                st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
+                
                 st.markdown(f"**Predicted Score:**")
                 st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
-                st.caption(f"HomeIce Diff: `{excel_prediction['homeice_diff']:+.3f}`")
+                
+                # HomeIce Differential with color
+                st.markdown(f"**HomeIce Diff:**")
+                st.markdown(f'<span class="diff-badge" style="color: {diff_color}; background: {diff_bg};">{excel_prediction["homeice_diff"]:+.3f}</span>', unsafe_allow_html=True)
         
         with col_ml:
             with st.container():
@@ -319,10 +424,19 @@ def display_game_card(game, standings, ml_predictions):
                 if ml_prediction['has_ml']:
                     st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
                     ml_win_prob = ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']
-                    st.markdown(f"**Win Probability:** `{ml_win_prob:.1%}`")
+                    
+                    # ML Win Probability with color
+                    ml_prob_color, ml_prob_bg = get_probability_color(ml_win_prob)
+                    st.markdown(f"**Win Probability:**")
+                    st.markdown(f'<span class="prob-badge" style="color: {ml_prob_color}; background: {ml_prob_bg};">{ml_win_prob:.1%}</span>', unsafe_allow_html=True)
+                    
                     st.markdown(f"**Predicted Score:**")
                     st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{ml_prediction['ml_predicted_away']}</strong> - <strong>{ml_prediction['ml_predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
-                    st.caption(f"Confidence: `{ml_prediction['ml_confidence']:.1%}`")
+                    
+                    # ML Confidence with color
+                    ml_conf_color, ml_conf_bg = get_probability_color(ml_prediction['ml_confidence'])
+                    st.markdown(f"**Confidence:**")
+                    st.markdown(f'<span class="diff-badge" style="color: {ml_conf_color}; background: {ml_conf_bg};">{ml_prediction["ml_confidence"]:.1%}</span>', unsafe_allow_html=True)
                 else:
                     st.info("No ML prediction available")
         
@@ -363,7 +477,7 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
             st.markdown("</div>", unsafe_allow_html=True)
         
         with col_vs:
-            st.markdown("<div style='text-align: center; padding-top: 1.5rem;'><h2>@</h2></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: center; padding-top: 1.5rem; color: #666666;'><h2>@</h2></div>", unsafe_allow_html=True)
         
         with col2:
             st.markdown(f"<div class='team-display'>", unsafe_allow_html=True)
@@ -375,6 +489,10 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
         st.markdown("---")
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # Get colors for probability and differential
+        prob_color, prob_bg = get_probability_color(excel_prediction['win_prob'])
+        diff_color, diff_bg = get_differential_color(excel_prediction['homeice_diff'])
+        
         # Show predictions side by side
         col_excel, col_ml = st.columns(2, gap="large")
         
@@ -382,10 +500,17 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
             with st.container():
                 st.markdown("#### 📊 Excel Model")
                 st.markdown(f'<div class="winner">🏆 {excel_prediction["predicted_winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f"**Win Probability:** `{excel_prediction['win_prob']:.1%}`")
+                
+                # Win Probability with color
+                st.markdown(f"**Win Probability:**")
+                st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
+                
                 st.markdown(f"**Predicted Score:**")
                 st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
-                st.caption(f"HomeIce Diff: `{excel_prediction['homeice_diff']:+.3f}`")
+                
+                # HomeIce Differential with color
+                st.markdown(f"**HomeIce Diff:**")
+                st.markdown(f'<span class="diff-badge" style="color: {diff_color}; background: {diff_bg};">{excel_prediction["homeice_diff"]:+.3f}</span>', unsafe_allow_html=True)
         
         with col_ml:
             with st.container():
@@ -393,10 +518,19 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
                 if ml_prediction['has_ml']:
                     st.markdown(f'<div class="ml-winner">🏆 {ml_prediction["ml_predicted_winner"]}</div>', unsafe_allow_html=True)
                     ml_win_prob = ml_prediction['ml_home_win_prob'] if ml_prediction['ml_predicted_winner'] == home_team else ml_prediction['ml_away_win_prob']
-                    st.markdown(f"**Win Probability:** `{ml_win_prob:.1%}`")
+                    
+                    # ML Win Probability with color
+                    ml_prob_color, ml_prob_bg = get_probability_color(ml_win_prob)
+                    st.markdown(f"**Win Probability:**")
+                    st.markdown(f'<span class="prob-badge" style="color: {ml_prob_color}; background: {ml_prob_bg};">{ml_win_prob:.1%}</span>', unsafe_allow_html=True)
+                    
                     st.markdown(f"**Predicted Score:**")
                     st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{ml_prediction['ml_predicted_away']}</strong> - <strong>{ml_prediction['ml_predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
-                    st.caption(f"Confidence: `{ml_prediction['ml_confidence']:.1%}`")
+                    
+                    # ML Confidence with color
+                    ml_conf_color, ml_conf_bg = get_probability_color(ml_prediction['ml_confidence'])
+                    st.markdown(f"**Confidence:**")
+                    st.markdown(f'<span class="diff-badge" style="color: {ml_conf_color}; background: {ml_conf_bg};">{ml_prediction["ml_confidence"]:.1%}</span>', unsafe_allow_html=True)
                 else:
                     st.info("No ML prediction available for this matchup")
         
@@ -407,7 +541,7 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
         st.markdown("### 📊 Team Statistics")
         
         # Center the table
-        col_table, _, _ = st.columns([2, 1, 2])
+        col_table, _, _ = st.columns([1, 0.3, 1])
         with col_table:
             stats_data = {
                 "Stat": ["Record", "Points", "Win %", "Goals Per Game", "Goals Allowed"],
@@ -441,7 +575,7 @@ def main():
     # Title - Centered
     st.markdown("<div class='centered-container'>", unsafe_allow_html=True)
     st.title("🏒 NHL Prediction Model 2025-26")
-    st.markdown(f"<div style='text-align: center; color: #00d4ff; margin-bottom: 2rem;'>📅 {datetime.now().strftime('%A, %B %d, %Y')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; color: #666666; margin-bottom: 2rem;'>📅 {datetime.now().strftime('%A, %B %d, %Y')}</div>", unsafe_allow_html=True)
     
     # Sidebar for navigation
     st.sidebar.title("🧭 Navigation")
@@ -474,7 +608,7 @@ def main():
         
         if len(todays_games) == 0:
             # Center the warning
-            col_warn, _, _ = st.columns([2, 1, 2])
+            col_warn, _, _ = st.columns([1, 1, 1])
             with col_warn:
                 st.warning("⚠️ No games scheduled for today")
             
@@ -486,7 +620,7 @@ def main():
                 future_games = future_games.sort_values('Date').head(5)
                 
                 # Center upcoming games list
-                col_upcoming, _, _ = st.columns([2, 1, 2])
+                col_upcoming, _, _ = st.columns([1, 1, 1])
                 with col_upcoming:
                     for idx, game in future_games.iterrows():
                         date_str = game['Date'].strftime('%A, %B %d')
@@ -498,9 +632,9 @@ def main():
             # Sort by time
             todays_games = todays_games.sort_values('Time')
             
-            # Display each game in centered container
+            # Display each game - wider for desktop
             for idx, game in todays_games.iterrows():
-                col_game, _, _ = st.columns([3, 1, 3])
+                col_game, _, _ = st.columns([1, 0.2, 1])
                 with col_game:
                     display_game_card(game, standings, ml_predictions)
     
@@ -512,8 +646,8 @@ def main():
         
         teams = sorted(standings['Team'].tolist())
         
-        # Center the team selectors
-        col_outer1, col_inner, col_outer2 = st.columns([1, 3, 1])
+        # Center the team selectors - better desktop layout
+        col_outer1, col_inner, col_outer2 = st.columns([1, 2, 1])
         with col_inner:
             col1, col_vs, col2 = st.columns([2.5, 0.5, 2.5], gap="medium")
             
@@ -521,7 +655,7 @@ def main():
                 away_team = st.selectbox("**Away Team**", [""] + teams, key="away")
             
             with col_vs:
-                st.markdown("<div style='text-align: center; padding-top: 2rem;'><h3>@</h3></div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align: center; padding-top: 2rem; color: #666666;'><h3>@</h3></div>", unsafe_allow_html=True)
             
             with col2:
                 home_team = st.selectbox("**Home Team**", [""] + teams, key="home")
@@ -529,7 +663,7 @@ def main():
             st.markdown("<br>", unsafe_allow_html=True)
             
             # Center the button
-            col_btn, _, _ = st.columns([2, 1, 2])
+            col_btn, _, _ = st.columns([1, 1, 1])
             with col_btn:
                 if st.button("🎯 Generate Prediction", type="primary", use_container_width=True):
                     if not away_team or not home_team:
@@ -538,7 +672,7 @@ def main():
                         st.error("❌ Please select different teams")
                     else:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        col_result, _, _ = st.columns([3, 1, 3])
+                        col_result, _, _ = st.columns([1, 0.2, 1])
                         with col_result:
                             display_custom_matchup(home_team, away_team, standings, ml_predictions)
     
@@ -565,7 +699,7 @@ def main():
             correct_games = (completed[correct_col] == 'YES').sum()
             overall_accuracy = (correct_games / total_games * 100)
             
-            col_metrics, _, _ = st.columns([3, 1, 3])
+            col_metrics, _, _ = st.columns([1, 0.3, 1])
             with col_metrics:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.markdown("#### 📈 Overall Results")
@@ -599,7 +733,7 @@ def main():
                 first_date = last_20['Date'].min().strftime('%Y-%m-%d')
                 last_date = last_20['Date'].max().strftime('%Y-%m-%d')
                 
-                col_last20, _, _ = st.columns([3, 1, 3])
+                col_last20, _, _ = st.columns([1, 0.3, 1])
                 with col_last20:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.markdown("#### 📊 Last 20 Games")
@@ -640,7 +774,7 @@ def main():
                 ml_correct = (ml_completed['ml_correct'] == 1).sum()
                 ml_accuracy = (ml_correct / ml_total * 100)
                 
-                col_ml_metrics, _, _ = st.columns([3, 1, 3])
+                col_ml_metrics, _, _ = st.columns([1, 0.3, 1])
                 with col_ml_metrics:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.markdown("#### 📈 Overall Results")
@@ -667,7 +801,7 @@ def main():
                     correct_conf = ml_completed[ml_completed['ml_correct'] == 1]['ml_confidence'].mean()
                     incorrect_conf = ml_completed[ml_completed['ml_correct'] == 0]['ml_confidence'].mean()
                     
-                    col_conf, _, _ = st.columns([3, 1, 3])
+                    col_conf, _, _ = st.columns([1, 0.3, 1])
                     with col_conf:
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                         st.markdown("#### 🎯 Confidence Analysis")
@@ -706,7 +840,7 @@ def main():
             ml_accuracy = (ml_correct / ml_total * 100)
             excel_accuracy = (excel_correct / ml_total * 100)
             
-            col_comparison, _, _ = st.columns([3, 1, 3])
+            col_comparison, _, _ = st.columns([1, 0.3, 1])
             with col_comparison:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.markdown("### 📊 Head-to-Head Comparison")
@@ -741,7 +875,7 @@ def main():
             ml_only = ((ml_completed['ml_correct'] == 1) & (ml_completed['excel_correct'] == 0)).sum()
             excel_only = ((ml_completed['ml_correct'] == 0) & (ml_completed['excel_correct'] == 1)).sum()
             
-            col_agreement, _, _ = st.columns([3, 1, 3])
+            col_agreement, _, _ = st.columns([1, 0.3, 1])
             with col_agreement:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.markdown("### 🤝 Model Agreement")
@@ -787,7 +921,7 @@ def main():
                 })
             
             # Center the table
-            col_table, _, _ = st.columns([2, 1, 2])
+            col_table, _, _ = st.columns([1, 0.3, 1])
             with col_table:
                 st.dataframe(display_data, use_container_width=True, hide_index=True)
     
