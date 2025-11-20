@@ -266,55 +266,80 @@ def load_data():
         st.info("Make sure 'Aidan Conte NHL 2025-26 Prediction Model.xlsx' is in the same folder as this script")
         return None, None, None, None
 
-def calculate_prediction(home_team, away_team, standings):
-    """Calculate prediction for a matchup"""
+def calculate_prediction(home_team, away_team, standings, homeice_diff, predicted_winner):
+    """
+    Calculate prediction for a matchup using locked HomeIce Differential and Predicted Winner
+    
+    Parameters:
+    - home_team: Name of home team
+    - away_team: Name of away team
+    - standings: DataFrame with team statistics
+    - homeice_diff: Locked HomeIce Differential from NHL HomeIce Model sheet
+    - predicted_winner: Locked Predicted Winner from NHL HomeIce Model sheet
+    
+    Returns dictionary with prediction details
+    """
     home_row = standings[standings['Team'] == home_team].iloc[0]
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
-    # Calculate HomeIce Differential
-    home_home_win_pct = home_row['HomeWin%']
-    away_away_win_pct = away_row['AwayWin%']
-    homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+    # Get goal stats from Standings sheet
+    home_offense = home_row.iloc[14]  # Home Goals per Game
+    home_defense = home_row.iloc[16]  # Home Goals Against
+    away_offense = away_row.iloc[15]  # Away Goals per Game
+    away_defense = away_row.iloc[17]  # Away Goals Against
     
-    # Get goal stats
-    home_offense = home_row.iloc[14]
-    home_defense = home_row.iloc[16]
-    away_offense = away_row.iloc[15]
-    away_defense = away_row.iloc[17]
+    # Calculate expected goals for each team based on their stats
+    expected_home = (home_offense + away_defense) / 2
+    expected_away = (away_offense + home_defense) / 2
     
-    # Method 1: Team-based prediction
-    team_predicted_home = (home_offense + away_defense) / 2
-    team_predicted_away = (away_offense + home_defense) / 2
+    # Calculate total expected goals
+    total_goals = expected_home + expected_away
     
-    # Method 2: HomeIce Differential-based prediction
-    avg_per_team = LEAGUE_AVG_TOTAL / 2
-    homeice_predicted_home = avg_per_team + (homeice_diff / 2)
-    homeice_predicted_away = avg_per_team - (homeice_diff / 2)
+    # Convert HomeIce Differential to goal differential
+    # HomeIce range: -2.5 to +2.5, typical NHL game score diff: 0-4 goals
+    # Scale factor: larger differential = larger goal margin
+    goal_differential = homeice_diff * 0.8  # Adjust this multiplier as needed
     
-    # Blended prediction
-    predicted_home_raw = (team_predicted_home * TEAM_WEIGHT) + (homeice_predicted_home * HOMEICE_WEIGHT)
-    predicted_away_raw = (team_predicted_away * TEAM_WEIGHT) + (homeice_predicted_away * HOMEICE_WEIGHT)
+    # Distribute total goals based on differential
+    # If differential is positive, home team gets more goals
+    # If differential is negative, away team gets more goals
+    predicted_home_raw = (total_goals / 2) + (goal_differential / 2)
+    predicted_away_raw = (total_goals / 2) - (goal_differential / 2)
     
+    # Round to whole numbers
     predicted_home = round(predicted_home_raw)
     predicted_away = round(predicted_away_raw)
     
-    # Determine winner
-    if predicted_home > predicted_away:
-        predicted_winner = home_team
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
-    elif predicted_away > predicted_home:
-        predicted_winner = away_team
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
+    # CRITICAL: Ensure the winner matches the locked Predicted Winner
+    if predicted_winner == home_team:
+        # Home team must win
+        if predicted_home <= predicted_away:
+            # Adjust scores to ensure home wins by at least 1
+            if abs(homeice_diff) < 0.3:  # Very close game
+                predicted_home = predicted_away + 1
+            else:
+                # Maintain the goal differential implied by HomeIce Diff
+                target_diff = max(1, round(abs(homeice_diff) * 0.8))
+                predicted_home = predicted_away + target_diff
     else:
-        if homeice_diff > 0:
-            predicted_winner = home_team
-            predicted_home += 1
-        else:
-            predicted_winner = away_team
-            predicted_away += 1
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
+        # Away team must win
+        if predicted_away <= predicted_home:
+            # Adjust scores to ensure away wins by at least 1
+            if abs(homeice_diff) < 0.3:  # Very close game
+                predicted_away = predicted_home + 1
+            else:
+                # Maintain the goal differential implied by HomeIce Diff
+                target_diff = max(1, round(abs(homeice_diff) * 0.8))
+                predicted_away = predicted_home + target_diff
     
-    win_prob = min(0.85, max(0.52, win_prob))
+    # Determine if game goes to overtime
+    # OT threshold: HomeIce Differential between -0.3 and +0.3
+    is_overtime = abs(homeice_diff) < 0.3
+    
+    # Calculate win probability based on differential magnitude
+    # Larger differential = higher confidence
+    win_prob = 0.5 + (abs(homeice_diff) / 5.0)  # 5.0 to scale from -2.5/+2.5 range
+    win_prob = min(0.85, max(0.52, win_prob))  # Cap between 52% and 85%
     
     return {
         'predicted_winner': predicted_winner,
@@ -322,8 +347,10 @@ def calculate_prediction(home_team, away_team, standings):
         'predicted_home': predicted_home,
         'predicted_away': predicted_away,
         'homeice_diff': homeice_diff,
+        'is_overtime': is_overtime,
         'home_row': home_row,
-        'away_row': away_row
+        'away_row': away_row,
+        'goal_differential': abs(predicted_home - predicted_away)
     }
 
 def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
