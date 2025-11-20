@@ -391,8 +391,12 @@ def display_game_card(game, standings, ml_predictions):
     game_time = game['Time']
     game_date = game['Date']
     
+    # FIXED: Get locked values from Excel
+    homeice_diff = game['HomeIce Differential']
+    predicted_winner = game['Predicted Winner']
+    
     # Get predictions from both models
-    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    excel_prediction = calculate_prediction(home_team, away_team, standings, homeice_diff, predicted_winner)
     ml_prediction = get_ml_prediction(home_team, away_team, game_date, ml_predictions)
     
     home_row = excel_prediction['home_row']
@@ -444,7 +448,8 @@ def display_game_card(game, standings, ml_predictions):
                 st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
                 
                 st.markdown(f"**Predicted Score:**")
-                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                ot_text = " (OT)" if excel_prediction['is_overtime'] else ""
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}{ot_text}</div>", unsafe_allow_html=True)
                 
                 # HomeIce Differential with color
                 st.markdown(f"**HomeIce Diff:**")
@@ -483,9 +488,33 @@ def display_game_card(game, standings, ml_predictions):
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-def display_custom_matchup(home_team, away_team, standings, ml_predictions):
+def display_custom_matchup(home_team, away_team, standings, ml_predictions, predictions_df):
     """Display custom matchup with predictions - Modern Layout"""
-    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    
+    # Try to find this matchup in the predictions sheet to get locked values
+    matchup = predictions_df[
+        (predictions_df['Home'] == home_team) & 
+        (predictions_df['Visitor'] == away_team)
+    ]
+    
+    if len(matchup) > 0:
+        # Use locked values from Excel
+        matchup = matchup.iloc[0]
+        homeice_diff = matchup['HomeIce Differential']
+        predicted_winner = matchup['Predicted Winner']
+    else:
+        # Calculate homeice_diff for custom matchup
+        home_row = standings[standings['Team'] == home_team].iloc[0]
+        away_row = standings[standings['Team'] == away_team].iloc[0]
+        
+        home_home_win_pct = home_row['HomeWin%']
+        away_away_win_pct = away_row['AwayWin%']
+        homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+        
+        # Determine predicted winner based on differential
+        predicted_winner = home_team if homeice_diff > 0 else away_team
+    
+    excel_prediction = calculate_prediction(home_team, away_team, standings, homeice_diff, predicted_winner)
     
     # Try to find ML prediction (might not exist for custom matchups)
     today = datetime.now()
@@ -536,7 +565,8 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
                 st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
                 
                 st.markdown(f"**Predicted Score:**")
-                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                ot_text = " (OT)" if excel_prediction['is_overtime'] else ""
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}{ot_text}</div>", unsafe_allow_html=True)
                 
                 # HomeIce Differential with color
                 st.markdown(f"**HomeIce Diff:**")
@@ -690,7 +720,7 @@ def main():
                     st.error("❌ Please select different teams")
                 else:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    display_custom_matchup(home_team, away_team, standings, ml_predictions)
+                    display_custom_matchup(home_team, away_team, standings, ml_predictions, predictions)
     
     # PAST PREDICTIONS PAGE (NEW!)
     elif page == "Past Predictions":
