@@ -181,6 +181,21 @@ st.markdown("""
 
 # Constants
 EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+# Alternative file names to try
+EXCEL_FILE_ALTERNATIVES = [
+    'Aidan Conte NHL 2025-26 Prediction Model.xlsx',
+    'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx',
+]
+
+def find_excel_file():
+    """Find the Excel file from alternatives"""
+    import os
+    for filename in EXCEL_FILE_ALTERNATIVES:
+        if os.path.exists(filename):
+            return filename
+    return EXCEL_FILE_ALTERNATIVES[0]  # Return first as default
+
+EXCEL_FILE = find_excel_file()
 LEAGUE_AVG_TOTAL = 6.24
 
 def get_probability_color(probability):
@@ -257,6 +272,11 @@ def load_data():
     """Load Excel data with caching"""
     load_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
+    # Show which file we're using
+    import os
+    st.sidebar.caption(f"📁 Using file: {EXCEL_FILE}")
+    st.sidebar.caption(f"📁 File exists: {os.path.exists(EXCEL_FILE)}")
+    
     try:
         # Load NHL HomeIce Model sheet (predictions)
         excel_predictions_raw = pd.read_excel(EXCEL_FILE, sheet_name='NHL HomeIce Model', header=None)
@@ -275,8 +295,11 @@ def load_data():
         
         # Try to load ML predictions (optional)
         ml_predictions = None
+        ml_error_details = None
         try:
+            st.sidebar.info("🔄 Loading ML Model...")
             ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
+            st.sidebar.info(f"📊 Read {len(ml_predictions)} ML predictions")
             
             # Convert date column
             ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'])
@@ -317,10 +340,15 @@ def load_data():
                 lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
             )
             
-            st.sidebar.success("✅ ML Model loaded")
+            st.sidebar.success(f"✅ ML Model loaded ({len(ml_predictions)} games)")
+            
         except Exception as ml_error:
-            st.sidebar.warning("⚠️ ML Model not available")
-            st.sidebar.caption(f"Reason: {str(ml_error)}")
+            import traceback
+            ml_error_details = traceback.format_exc()
+            st.sidebar.error("❌ ML Model failed to load")
+            st.sidebar.caption(f"Error: {str(ml_error)}")
+            with st.sidebar.expander("Show full error"):
+                st.code(ml_error_details)
             ml_predictions = pd.DataFrame()  # Empty dataframe
         
         return predictions, standings, ml_predictions, load_timestamp
