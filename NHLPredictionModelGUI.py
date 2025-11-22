@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 17 12:59:42 2025
-
-@author: aidanconte
-"""
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-NHL Prediction Model - Web App Version with ML Integration
-Accessible via web browser - easy to share!
+NHL Prediction Model - Enhanced Web App with Excel Score Predictions
+Includes: Score predictions, Overtime predictions based on HomeIce Differential
 """
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 from datetime import datetime
 
 # Page config
@@ -188,8 +182,6 @@ st.markdown("""
 # Constants
 EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 LEAGUE_AVG_TOTAL = 6.24
-TEAM_WEIGHT = 0.70
-HOMEICE_WEIGHT = 0.30
 
 def get_probability_color(probability):
     """
@@ -249,16 +241,25 @@ def get_differential_color(differential):
     bg_color = f"rgba({r}, {g}, {b}, 0.15)"
     return color, bg_color
 
-@st.cache_data(ttl=3600)  # Cache expires after 1 hour (3600 seconds)
+@st.cache_data(ttl=3600)  # Cache expires after 1 hour
 def load_data():
     """Load Excel data with caching"""
     load_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     try:
-        predictions = pd.read_excel(EXCEL_FILE, sheet_name='NHL HomeIce Model', header=0)
-        predictions = predictions.iloc[:, 3:].reset_index(drop=True)
+        # Load NHL HomeIce Model sheet (predictions)
+        excel_predictions_raw = pd.read_excel(EXCEL_FILE, sheet_name='NHL HomeIce Model', header=None)
+        
+        # Extract header row (row 0) and data starts from row 1
+        header_row = excel_predictions_raw.iloc[0].values
+        predictions_data = excel_predictions_raw.iloc[1:].reset_index(drop=True)
+        predictions_data.columns = header_row
+        
+        # Select relevant columns starting from column 3 (Date onwards)
+        predictions = predictions_data.iloc[:, 3:].copy()
         predictions['Date'] = pd.to_datetime(predictions['Date'])
         
+        # Load standings
         standings = pd.read_excel(EXCEL_FILE, sheet_name='Standings')
         
         # Try to load ML predictions (optional)
@@ -278,55 +279,159 @@ def load_data():
         st.info("Make sure 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx' is in the same folder as this script")
         return None, None, None, None
 
-def calculate_prediction(home_team, away_team, standings):
-    """Calculate prediction for a matchup"""
+def calculate_overtime_probability(homeice_diff):
+    """
+    Calculate overtime probability based on HomeIce Differential
+    Close games (small differential) are more likely to go to OT
+    """
+    # Use absolute value - closer to 0 means higher OT chance
+    abs_diff = abs(homeice_diff)
+    
+    # Map differential to OT probability
+    # 0.0 differential = ~45% OT chance
+    # 0.5 differential = ~25% OT chance  
+    # 1.0+ differential = ~10% OT chance
+    
+    if abs_diff < 0.2:
+        ot_prob = 0.40 + (0.2 - abs_diff) * 0.5  # 40-50%
+    elif abs_diff < 0.5:
+        ot_prob = 0.25 + (0.5 - abs_diff) * 0.5  # 25-40%
+    elif abs_diff < 1.0:
+        ot_prob = 0.10 + (1.0 - abs_diff) * 0.3  # 10-25%
+    else:
+        ot_prob = max(0.05, 0.10 - (abs_diff - 1.0) * 0.05)  # 5-10%
+    
+    return max(0.05, min(0.50, ot_prob))  # Clamp between 5% and 50%
+
+def predict_score_from_excel(home_team, away_team, predicted_winner, homeice_diff, standings):
+    """
+    Predict game score based on Excel's predicted winner and HomeIce Differential
+    Uses team goals for/against to create realistic scores
+    """
+    # Get team stats
     home_row = standings[standings['Team'] == home_team].iloc[0]
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
-    # Calculate HomeIce Differential
-    home_home_win_pct = home_row['HomeWin%']
-    away_away_win_pct = away_row['AwayWin%']
-    homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+    # Get goals per game stats
+    home_goals_for = home_row['Home Goals per Game']
+    home_goals_against = home_row['Home Goals Against']
+    away_goals_for = away_row['Away Goals per Game']
+    away_goals_against = away_row['Away Goals Against']
     
-    # Get goal stats
-    home_offense = home_row.iloc[14]
-    home_defense = home_row.iloc[16]
-    away_offense = away_row.iloc[15]
-    away_defense = away_row.iloc[17]
+    # Calculate expected goals for each team (baseline)
+    expected_home = (home_goals_for + away_goals_against) / 2
+    expected_away = (away_goals_for + home_goals_against) / 2
     
-    # Method 1: Team-based prediction
-    team_predicted_home = (home_offense + away_defense) / 2
-    team_predicted_away = (away_offense + home_defense) / 2
+    # Apply HomeIce Differential adjustment
+    # Positive differential favors home team, negative favors away
+    home_adjustment = homeice_diff * 0.5
+    away_adjustment = -homeice_diff * 0.5
     
-    # Method 2: HomeIce Differential-based prediction
-    avg_per_team = LEAGUE_AVG_TOTAL / 2
-    homeice_predicted_home = avg_per_team + (homeice_diff / 2)
-    homeice_predicted_away = avg_per_team - (homeice_diff / 2)
+    adjusted_home = expected_home + home_adjustment
+    adjusted_away = expected_away + away_adjustment
     
-    # Blended prediction
-    predicted_home_raw = (team_predicted_home * TEAM_WEIGHT) + (homeice_predicted_home * HOMEICE_WEIGHT)
-    predicted_away_raw = (team_predicted_away * TEAM_WEIGHT) + (homeice_predicted_away * HOMEICE_WEIGHT)
+    # Ensure the predicted winner actually wins
+    if predicted_winner == home_team:
+        # Home team should win
+        predicted_home = round(adjusted_home)
+        predicted_away = round(adjusted_away)
+        
+        # Make sure home wins by at least 1
+        if predicted_home <= predicted_away:
+            predicted_home = predicted_away + 1
+            
+    else:  # Away team wins
+        predicted_home = round(adjusted_home)
+        predicted_away = round(adjusted_away)
+        
+        # Make sure away wins by at least 1
+        if predicted_away <= predicted_home:
+            predicted_away = predicted_home + 1
     
-    predicted_home = round(predicted_home_raw)
-    predicted_away = round(predicted_away_raw)
+    # Keep scores realistic (2-7 goals typically)
+    predicted_home = max(2, min(7, predicted_home))
+    predicted_away = max(2, min(7, predicted_away))
     
-    # Determine winner
-    if predicted_home > predicted_away:
-        predicted_winner = home_team
+    # Final check - ensure winner still wins
+    if predicted_winner == home_team and predicted_home <= predicted_away:
+        predicted_home = predicted_away + 1
+    elif predicted_winner == away_team and predicted_away <= predicted_home:
+        predicted_away = predicted_home + 1
+    
+    return predicted_home, predicted_away
+
+def get_excel_prediction_from_sheet(home_team, away_team, game_date, predictions):
+    """
+    Get Excel prediction directly from the NHL HomeIce Model sheet
+    """
+    try:
+        # Convert game_date to datetime if it's not already
+        if isinstance(game_date, str):
+            game_date = pd.to_datetime(game_date)
+        
+        # Find matching game
+        game_match = predictions[
+            (predictions['Home'] == home_team) & 
+            (predictions['Visitor'] == away_team) &
+            (predictions['Date'].dt.date == game_date.date())
+        ]
+        
+        if len(game_match) > 0:
+            game = game_match.iloc[0]
+            return {
+                'predicted_winner': game['Predicted Winner'],
+                'homeice_diff': game['HomeIce Differential'],
+                'strength_of_win': game.get('Strength of Win', 0),
+                'has_excel': True
+            }
+    except Exception as e:
+        st.sidebar.warning(f"Error reading Excel prediction: {e}")
+    
+    return {'has_excel': False}
+
+def calculate_prediction(home_team, away_team, standings, predictions=None, game_date=None):
+    """
+    Calculate prediction for a matchup
+    If predictions sheet and game_date provided, read from Excel
+    Otherwise calculate on the fly
+    """
+    home_row = standings[standings['Team'] == home_team].iloc[0]
+    away_row = standings[standings['Team'] == away_team].iloc[0]
+    
+    # Try to get Excel prediction first
+    excel_pred = None
+    if predictions is not None and game_date is not None:
+        excel_pred = get_excel_prediction_from_sheet(home_team, away_team, game_date, predictions)
+    
+    # Use Excel prediction if available, otherwise calculate
+    if excel_pred and excel_pred['has_excel']:
+        predicted_winner = excel_pred['predicted_winner']
+        homeice_diff = excel_pred['homeice_diff']
         win_prob = 0.5 + (abs(homeice_diff) / 12)
-    elif predicted_away > predicted_home:
-        predicted_winner = away_team
-        win_prob = 0.5 + (abs(homeice_diff) / 12)
+        win_prob = min(0.85, max(0.52, win_prob))
     else:
+        # Calculate HomeIce Differential
+        home_home_win_pct = home_row['HomeWin%']
+        away_away_win_pct = away_row['AwayWin%']
+        homeice_diff = (home_home_win_pct - away_away_win_pct) * 6
+        
+        # Determine winner based on differential
         if homeice_diff > 0:
             predicted_winner = home_team
-            predicted_home += 1
         else:
             predicted_winner = away_team
-            predicted_away += 1
+        
         win_prob = 0.5 + (abs(homeice_diff) / 12)
+        win_prob = min(0.85, max(0.52, win_prob))
     
-    win_prob = min(0.85, max(0.52, win_prob))
+    # Predict score based on winner and differential
+    predicted_home, predicted_away = predict_score_from_excel(
+        home_team, away_team, predicted_winner, homeice_diff, standings
+    )
+    
+    # Calculate overtime probability
+    ot_probability = calculate_overtime_probability(homeice_diff)
+    is_overtime = ot_probability > 0.35  # Predict OT if >35% chance
     
     return {
         'predicted_winner': predicted_winner,
@@ -334,6 +439,8 @@ def calculate_prediction(home_team, away_team, standings):
         'predicted_home': predicted_home,
         'predicted_away': predicted_away,
         'homeice_diff': homeice_diff,
+        'ot_probability': ot_probability,
+        'is_overtime': is_overtime,
         'home_row': home_row,
         'away_row': away_row
     }
@@ -391,7 +498,7 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
     else:
         return {'has_ml': False}
 
-def display_game_card(game, standings, ml_predictions):
+def display_game_card(game, standings, predictions, ml_predictions):
     """Display a game card with both model predictions - Modern Layout"""
     home_team = game['Home']
     away_team = game['Visitor']
@@ -399,7 +506,7 @@ def display_game_card(game, standings, ml_predictions):
     game_date = game['Date']
     
     # Get predictions from both models
-    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    excel_prediction = calculate_prediction(home_team, away_team, standings, predictions, game_date)
     ml_prediction = get_ml_prediction(home_team, away_team, game_date, ml_predictions)
     
     home_row = excel_prediction['home_row']
@@ -437,6 +544,7 @@ def display_game_card(game, standings, ml_predictions):
         # Get colors for probability and differential
         prob_color, prob_bg = get_probability_color(excel_prediction['win_prob'])
         diff_color, diff_bg = get_differential_color(excel_prediction['homeice_diff'])
+        ot_color, ot_bg = get_probability_color(excel_prediction['ot_probability'])
         
         # Predictions side by side - responsive columns
         col_excel, col_ml = st.columns(2, gap="large")
@@ -450,12 +558,18 @@ def display_game_card(game, standings, ml_predictions):
                 st.markdown(f"**Win Probability:**")
                 st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
                 
+                # Predicted Score with OT indicator
                 st.markdown(f"**Predicted Score:**")
-                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                excel_ot_text = " (OT/SO)" if excel_prediction['is_overtime'] else ""
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}{excel_ot_text}</div>", unsafe_allow_html=True)
                 
                 # HomeIce Differential with color
                 st.markdown(f"**HomeIce Diff:**")
                 st.markdown(f'<span class="diff-badge" style="color: {diff_color}; background: {diff_bg};">{excel_prediction["homeice_diff"]:+.3f}</span>', unsafe_allow_html=True)
+                
+                # OT Probability
+                st.markdown(f"**OT Probability:**")
+                st.markdown(f'<span class="diff-badge" style="color: {ot_color}; background: {ot_bg};">⏱️ {excel_prediction["ot_probability"]:.1%}</span>', unsafe_allow_html=True)
         
         with col_ml:
             with st.container():
@@ -493,17 +607,28 @@ def display_game_card(game, standings, ml_predictions):
             st.markdown("<br>", unsafe_allow_html=True)
             col_agreement, _, _ = st.columns([1, 2, 1])
             with col_agreement:
+                agreements = []
                 if excel_prediction['predicted_winner'] == ml_prediction['ml_predicted_winner']:
-                    st.success("✅ Both models agree on winner")
+                    agreements.append("✅ Winner")
                 else:
-                    st.warning("⚠️ Models disagree on winner")
+                    agreements.append("⚠️ Winner")
+                
+                # Check OT agreement
+                both_ot = excel_prediction['is_overtime'] and ml_prediction.get('ml_is_overtime', False)
+                neither_ot = not excel_prediction['is_overtime'] and not ml_prediction.get('ml_is_overtime', False)
+                if both_ot or neither_ot:
+                    agreements.append("✅ OT")
+                else:
+                    agreements.append("⚠️ OT")
+                
+                st.info(" | ".join(agreements))
         
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-def display_custom_matchup(home_team, away_team, standings, ml_predictions):
+def display_custom_matchup(home_team, away_team, standings, predictions, ml_predictions):
     """Display custom matchup with predictions - Modern Layout"""
-    excel_prediction = calculate_prediction(home_team, away_team, standings)
+    excel_prediction = calculate_prediction(home_team, away_team, standings, predictions, None)
     
     # Try to find ML prediction (might not exist for custom matchups)
     today = datetime.now()
@@ -540,6 +665,7 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
         # Get colors for probability and differential
         prob_color, prob_bg = get_probability_color(excel_prediction['win_prob'])
         diff_color, diff_bg = get_differential_color(excel_prediction['homeice_diff'])
+        ot_color, ot_bg = get_probability_color(excel_prediction['ot_probability'])
         
         # Show predictions side by side
         col_excel, col_ml = st.columns(2, gap="large")
@@ -553,12 +679,18 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
                 st.markdown(f"**Win Probability:**")
                 st.markdown(f'<span class="prob-badge" style="color: {prob_color}; background: {prob_bg};">{excel_prediction["win_prob"]:.1%}</span>', unsafe_allow_html=True)
                 
+                # Predicted Score with OT indicator
                 st.markdown(f"**Predicted Score:**")
-                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}</div>", unsafe_allow_html=True)
+                excel_ot_text = " (OT/SO)" if excel_prediction['is_overtime'] else ""
+                st.markdown(f"<div style='text-align: center; font-size: 1.2rem; padding: 0.5rem;'>{away_team} <strong>{excel_prediction['predicted_away']}</strong> - <strong>{excel_prediction['predicted_home']}</strong> {home_team}{excel_ot_text}</div>", unsafe_allow_html=True)
                 
                 # HomeIce Differential with color
                 st.markdown(f"**HomeIce Diff:**")
                 st.markdown(f'<span class="diff-badge" style="color: {diff_color}; background: {diff_bg};">{excel_prediction["homeice_diff"]:+.3f}</span>', unsafe_allow_html=True)
+                
+                # OT Probability
+                st.markdown(f"**OT Probability:**")
+                st.markdown(f'<span class="diff-badge" style="color: {ot_color}; background: {ot_bg};">⏱️ {excel_prediction["ot_probability"]:.1%}</span>', unsafe_allow_html=True)
         
         with col_ml:
             with st.container():
@@ -606,15 +738,15 @@ def display_custom_matchup(home_team, away_team, standings, ml_predictions):
                     f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])}",
                     int(away_row['PTS']),
                     f"{away_row['AwayWin%']:.1%}",
-                    f"{away_row.iloc[15]:.2f}",
-                    f"{away_row.iloc[17]:.2f}"
+                    f"{away_row['Away Goals per Game']:.2f}",
+                    f"{away_row['Away Goals Against']:.2f}"
                 ],
                 home_team: [
                     f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])}",
                     int(home_row['PTS']),
                     f"{home_row['HomeWin%']:.1%}",
-                    f"{home_row.iloc[14]:.2f}",
-                    f"{home_row.iloc[16]:.2f}"
+                    f"{home_row['Home Goals per Game']:.2f}",
+                    f"{home_row['Home Goals Against']:.2f}"
                 ]
             }
             st.dataframe(stats_data, use_container_width=True, hide_index=True)
@@ -693,7 +825,7 @@ def main():
             for idx, game in todays_games.iterrows():
                 col_game, _, _ = st.columns([1, 0.2, 1])
                 with col_game:
-                    display_game_card(game, standings, ml_predictions)
+                    display_game_card(game, standings, predictions, ml_predictions)
     
     # CUSTOM MATCHUP PAGE
     elif page == "Custom Matchup":
@@ -731,7 +863,7 @@ def main():
                         st.markdown("<br>", unsafe_allow_html=True)
                         col_result, _, _ = st.columns([1, 0.2, 1])
                         with col_result:
-                            display_custom_matchup(home_team, away_team, standings, ml_predictions)
+                            display_custom_matchup(home_team, away_team, standings, predictions, ml_predictions)
     
     # MODEL PERFORMANCE PAGE
     elif page == "Model Performance":
@@ -994,7 +1126,7 @@ def main():
         **NHL Prediction Model 2025-26**
         
         🔄 **Two Models:**
-        - 📊 Excel: HomeIce Differential (70% team stats, 30% home ice)
+        - 📊 Excel: HomeIce Differential with score & OT predictions
         - 🤖 ML: Random Forest machine learning model
         
         Compare predictions and performance across both approaches!
@@ -1004,11 +1136,10 @@ def main():
         **NHL Prediction Model 2025-26**
         
         📊 **Excel Model**
-        Using HomeIce Differential and team statistics to predict game outcomes.
-        
-        Model blends:
-        - 70% team-based stats
-        - 30% HomeIce advantage
+        Using HomeIce Differential and team statistics to predict:
+        - Game winner
+        - Final score
+        - Overtime likelihood
         
         💡 Add 'ML Prediction Model' sheet to Excel file to enable ML predictions!
         """)
