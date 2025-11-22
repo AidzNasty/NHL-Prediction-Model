@@ -241,6 +241,17 @@ def get_differential_color(differential):
     bg_color = f"rgba({r}, {g}, {b}, 0.15)"
     return color, bg_color
 
+def convert_percentage_string(pct_str):
+    """Convert percentage string like '96.00%' to float like 0.96"""
+    try:
+        if pd.isna(pct_str) or pct_str == 'nan%':
+            return 0.0
+        if isinstance(pct_str, str):
+            return float(pct_str.strip('%')) / 100.0
+        return float(pct_str)
+    except:
+        return 0.0
+
 @st.cache_data(ttl=3600)  # Cache expires after 1 hour
 def load_data():
     """Load Excel data with caching"""
@@ -266,7 +277,46 @@ def load_data():
         ml_predictions = None
         try:
             ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
-            ml_predictions['date'] = pd.to_datetime(ml_predictions['date'])
+            
+            # Convert date column
+            ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'])
+            
+            # Rename columns to match expected names
+            ml_predictions = ml_predictions.rename(columns={
+                'ml_winner': 'ml_predicted_winner',
+                'ml_home_score': 'ml_predicted_home_score',
+                'ml_away_score': 'ml_predicted_away_score',
+                'ml_ot': 'ml_is_overtime',
+                'ml_ot_prob': 'ml_overtime_probability',
+                'excel_winner': 'excel_predicted_winner'
+            })
+            
+            # Convert percentage strings to floats
+            ml_predictions['ml_confidence'] = ml_predictions['ml_confidence'].apply(convert_percentage_string)
+            ml_predictions['ml_overtime_probability'] = ml_predictions['ml_overtime_probability'].apply(convert_percentage_string)
+            
+            # Convert YES/NO to boolean for overtime
+            ml_predictions['ml_is_overtime'] = ml_predictions['ml_is_overtime'].apply(lambda x: x == 'YES' if pd.notna(x) else False)
+            
+            # Calculate win probabilities (use confidence as base)
+            # If ML predicted home team, home win prob = confidence, else away win prob = confidence
+            ml_predictions['ml_home_win_prob'] = ml_predictions.apply(
+                lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['home_team'] else (1 - row['ml_confidence']),
+                axis=1
+            )
+            ml_predictions['ml_away_win_prob'] = ml_predictions.apply(
+                lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['away_team'] else (1 - row['ml_confidence']),
+                axis=1
+            )
+            
+            # Convert correct columns: YES -> 1, NO -> 0, NaN -> NaN
+            ml_predictions['ml_correct'] = ml_predictions['ml_correct'].apply(
+                lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
+            )
+            ml_predictions['excel_correct'] = ml_predictions['excel_correct'].apply(
+                lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
+            )
+            
             st.sidebar.success("✅ ML Model loaded")
         except Exception as ml_error:
             st.sidebar.warning("⚠️ ML Model not available")
