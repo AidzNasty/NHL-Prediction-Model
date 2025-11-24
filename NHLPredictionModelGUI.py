@@ -301,44 +301,88 @@ def load_data():
             ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
             st.sidebar.info(f"📊 Read {len(ml_predictions)} ML predictions")
             
+            # Show actual columns for debugging
+            st.sidebar.caption(f"Columns found: {', '.join(ml_predictions.columns[:5])}...")
+            
+            # Find date column - try multiple possible names
+            date_col = None
+            possible_date_cols = ['game_date', 'date', 'Date', 'GAME_DATE', 'Game Date']
+            for col in possible_date_cols:
+                if col in ml_predictions.columns:
+                    date_col = col
+                    break
+            
+            if date_col is None:
+                raise ValueError(f"No date column found. Available columns: {list(ml_predictions.columns)}")
+            
             # Convert date column
-            ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'])
+            ml_predictions['date'] = pd.to_datetime(ml_predictions[date_col])
             
-            # Rename columns to match expected names
-            ml_predictions = ml_predictions.rename(columns={
-                'ml_winner': 'ml_predicted_winner',
-                'ml_home_score': 'ml_predicted_home_score',
-                'ml_away_score': 'ml_predicted_away_score',
-                'ml_ot': 'ml_is_overtime',
-                'ml_ot_prob': 'ml_overtime_probability',
-                'excel_winner': 'excel_predicted_winner'
-            })
+            # Rename columns to match expected names - only rename if they exist
+            rename_map = {}
+            if 'ml_winner' in ml_predictions.columns:
+                rename_map['ml_winner'] = 'ml_predicted_winner'
+            if 'ml_home_score' in ml_predictions.columns:
+                rename_map['ml_home_score'] = 'ml_predicted_home_score'
+            if 'ml_away_score' in ml_predictions.columns:
+                rename_map['ml_away_score'] = 'ml_predicted_away_score'
+            if 'ml_ot' in ml_predictions.columns:
+                rename_map['ml_ot'] = 'ml_is_overtime'
+            if 'ml_ot_prob' in ml_predictions.columns:
+                rename_map['ml_ot_prob'] = 'ml_overtime_probability'
+            if 'excel_winner' in ml_predictions.columns:
+                rename_map['excel_winner'] = 'excel_predicted_winner'
             
-            # Convert percentage strings to floats
-            ml_predictions['ml_confidence'] = ml_predictions['ml_confidence'].apply(convert_percentage_string)
-            ml_predictions['ml_overtime_probability'] = ml_predictions['ml_overtime_probability'].apply(convert_percentage_string)
+            if rename_map:
+                ml_predictions = ml_predictions.rename(columns=rename_map)
+                st.sidebar.caption(f"Renamed {len(rename_map)} columns")
+            
+            # Convert percentage strings to floats - only if columns exist
+            if 'ml_confidence' in ml_predictions.columns:
+                ml_predictions['ml_confidence'] = ml_predictions['ml_confidence'].apply(convert_percentage_string)
+            else:
+                ml_predictions['ml_confidence'] = 0.5  # Default confidence
+                
+            if 'ml_overtime_probability' in ml_predictions.columns:
+                ml_predictions['ml_overtime_probability'] = ml_predictions['ml_overtime_probability'].apply(convert_percentage_string)
+            else:
+                ml_predictions['ml_overtime_probability'] = 0.0
             
             # Convert YES/NO to boolean for overtime
-            ml_predictions['ml_is_overtime'] = ml_predictions['ml_is_overtime'].apply(lambda x: x == 'YES' if pd.notna(x) else False)
+            if 'ml_is_overtime' in ml_predictions.columns:
+                ml_predictions['ml_is_overtime'] = ml_predictions['ml_is_overtime'].apply(lambda x: x == 'YES' if pd.notna(x) else False)
+            else:
+                ml_predictions['ml_is_overtime'] = False
             
             # Calculate win probabilities (use confidence as base)
-            # If ML predicted home team, home win prob = confidence, else away win prob = confidence
-            ml_predictions['ml_home_win_prob'] = ml_predictions.apply(
-                lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['home_team'] else (1 - row['ml_confidence']),
-                axis=1
-            )
-            ml_predictions['ml_away_win_prob'] = ml_predictions.apply(
-                lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['away_team'] else (1 - row['ml_confidence']),
-                axis=1
-            )
+            # Check if necessary columns exist
+            if all(col in ml_predictions.columns for col in ['ml_predicted_winner', 'home_team', 'ml_confidence']):
+                ml_predictions['ml_home_win_prob'] = ml_predictions.apply(
+                    lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['home_team'] else (1 - row['ml_confidence']),
+                    axis=1
+                )
+                ml_predictions['ml_away_win_prob'] = ml_predictions.apply(
+                    lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['away_team'] else (1 - row['ml_confidence']),
+                    axis=1
+                )
+            else:
+                ml_predictions['ml_home_win_prob'] = 0.5
+                ml_predictions['ml_away_win_prob'] = 0.5
             
             # Convert correct columns: YES -> 1, NO -> 0, NaN -> NaN
-            ml_predictions['ml_correct'] = ml_predictions['ml_correct'].apply(
-                lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
-            )
-            ml_predictions['excel_correct'] = ml_predictions['excel_correct'].apply(
-                lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
-            )
+            if 'ml_correct' in ml_predictions.columns:
+                ml_predictions['ml_correct'] = ml_predictions['ml_correct'].apply(
+                    lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
+                )
+            else:
+                ml_predictions['ml_correct'] = np.nan
+                
+            if 'excel_correct' in ml_predictions.columns:
+                ml_predictions['excel_correct'] = ml_predictions['excel_correct'].apply(
+                    lambda x: 1 if x == 'YES' else (0 if x == 'NO' else np.nan)
+                )
+            else:
+                ml_predictions['excel_correct'] = np.nan
             
             st.sidebar.success(f"✅ ML Model loaded ({len(ml_predictions)} games)")
             
