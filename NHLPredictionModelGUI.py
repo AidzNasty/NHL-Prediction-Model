@@ -235,75 +235,115 @@ def load_data():
         ml_predictions = None
         try:
             st.sidebar.info("🔄 Loading ML Model...")
-            ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
-            st.sidebar.info(f"📊 Found {len(ml_predictions)} ML predictions")
             
-            # Find date column
-            date_col = None
-            for col in ['game_date', 'date', 'Date']:
-                if col in ml_predictions.columns:
-                    date_col = col
-                    break
-            
-            if date_col:
-                ml_predictions['game_date'] = pd.to_datetime(ml_predictions[date_col])
-            
-            # Rename columns
-            rename_map = {
-                'ml_winner': 'ml_predicted_winner',
-                'ml_home_score': 'ml_predicted_home_score',
-                'ml_away_score': 'ml_predicted_away_score',
-                'ml_ot': 'ml_is_overtime',
-                'ml_ot_prob': 'ml_overtime_probability',
-                'excel_winner': 'excel_predicted_winner'
-            }
-            ml_predictions = ml_predictions.rename(columns={k: v for k, v in rename_map.items() if k in ml_predictions.columns})
-            
-            # Convert percentages
-            if 'ml_confidence' in ml_predictions.columns:
-                ml_predictions['ml_confidence'] = ml_predictions['ml_confidence'].apply(convert_percentage_string)
+            # Check if sheet exists
+            excel_file = pd.ExcelFile(EXCEL_FILE)
+            if 'ML Prediction Model' not in excel_file.sheet_names:
+                st.sidebar.warning("⚠️ 'ML Prediction Model' sheet not found")
+                st.sidebar.caption(f"Available sheets: {', '.join(excel_file.sheet_names)}")
+                ml_predictions = pd.DataFrame()
             else:
-                ml_predictions['ml_confidence'] = 0.5
+                # Load the sheet
+                ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
+                st.sidebar.info(f"📊 Read {len(ml_predictions)} rows")
+                st.sidebar.caption(f"Columns: {', '.join(ml_predictions.columns[:6])}...")
                 
-            if 'ml_overtime_probability' in ml_predictions.columns:
-                ml_predictions['ml_overtime_probability'] = ml_predictions['ml_overtime_probability'].apply(convert_percentage_string)
-            else:
-                ml_predictions['ml_overtime_probability'] = 0.0
-            
-            # Convert OT to boolean
-            if 'ml_is_overtime' in ml_predictions.columns:
-                ml_predictions['ml_is_overtime'] = ml_predictions['ml_is_overtime'].apply(
-                    lambda x: str(x).upper() in ['YES', 'TRUE', '1'] if pd.notna(x) else False
-                )
-            else:
-                ml_predictions['ml_is_overtime'] = False
-            
-            # Calculate win probabilities
-            if all(col in ml_predictions.columns for col in ['ml_predicted_winner', 'home_team', 'ml_confidence']):
-                ml_predictions['ml_home_win_prob'] = ml_predictions.apply(
-                    lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['home_team'] else (1 - row['ml_confidence']),
-                    axis=1
-                )
-                ml_predictions['ml_away_win_prob'] = ml_predictions.apply(
-                    lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['away_team'] else (1 - row['ml_confidence']),
-                    axis=1
-                )
-            else:
-                ml_predictions['ml_home_win_prob'] = 0.5
-                ml_predictions['ml_away_win_prob'] = 0.5
-            
-            # Convert correct columns
-            for col in ['ml_correct', 'excel_correct']:
-                if col in ml_predictions.columns:
-                    ml_predictions[col] = ml_predictions[col].apply(
-                        lambda x: 1 if str(x).upper() == 'YES' else (0 if str(x).upper() == 'NO' else np.nan)
+                # Convert game_date to datetime (it comes as string from Excel)
+                if 'game_date' in ml_predictions.columns:
+                    ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'], format='%Y-%m-%d', errors='coerce')
+                    st.sidebar.caption(f"✅ Converted game_date to datetime")
+                else:
+                    st.sidebar.error("❌ 'game_date' column not found!")
+                    ml_predictions = pd.DataFrame()
+                    raise ValueError("game_date column missing")
+                
+                # Rename columns to match expected names
+                rename_map = {
+                    'ml_winner': 'ml_predicted_winner',
+                    'ml_home_score': 'ml_predicted_home_score',
+                    'ml_away_score': 'ml_predicted_away_score',
+                    'ml_ot': 'ml_is_overtime',
+                    'ml_ot_prob': 'ml_overtime_probability',
+                    'excel_winner': 'excel_predicted_winner'
+                }
+                
+                # Only rename columns that exist
+                actual_renames = {k: v for k, v in rename_map.items() if k in ml_predictions.columns}
+                if actual_renames:
+                    ml_predictions = ml_predictions.rename(columns=actual_renames)
+                    st.sidebar.caption(f"✅ Renamed {len(actual_renames)} columns")
+                
+                # Convert percentage strings to floats
+                if 'ml_confidence' in ml_predictions.columns:
+                    ml_predictions['ml_confidence'] = ml_predictions['ml_confidence'].apply(convert_percentage_string)
+                else:
+                    ml_predictions['ml_confidence'] = 0.5
+                
+                if 'ml_overtime_probability' in ml_predictions.columns:
+                    ml_predictions['ml_overtime_probability'] = ml_predictions['ml_overtime_probability'].apply(convert_percentage_string)
+                else:
+                    ml_predictions['ml_overtime_probability'] = 0.0
+                
+                # Convert YES/NO to boolean for overtime
+                if 'ml_is_overtime' in ml_predictions.columns:
+                    def convert_ot(x):
+                        if pd.isna(x):
+                            return False
+                        x_str = str(x).upper()
+                        return x_str in ['YES', 'TRUE', '1', 'Y']
+                    ml_predictions['ml_is_overtime'] = ml_predictions['ml_is_overtime'].apply(convert_ot)
+                else:
+                    ml_predictions['ml_is_overtime'] = False
+                
+                # Calculate win probabilities
+                if all(col in ml_predictions.columns for col in ['ml_predicted_winner', 'home_team', 'ml_confidence']):
+                    ml_predictions['ml_home_win_prob'] = ml_predictions.apply(
+                        lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['home_team'] else (1 - row['ml_confidence']),
+                        axis=1
                     )
-            
-            st.sidebar.success(f"✅ ML Model loaded ({len(ml_predictions)} games)")
-            
+                    ml_predictions['ml_away_win_prob'] = ml_predictions.apply(
+                        lambda row: row['ml_confidence'] if row['ml_predicted_winner'] == row['away_team'] else (1 - row['ml_confidence']),
+                        axis=1
+                    )
+                else:
+                    ml_predictions['ml_home_win_prob'] = 0.5
+                    ml_predictions['ml_away_win_prob'] = 0.5
+                
+                # Convert correct columns: YES -> 1, NO -> 0, else NaN
+                for col in ['ml_correct', 'excel_correct']:
+                    if col in ml_predictions.columns:
+                        def convert_correct(x):
+                            if pd.isna(x):
+                                return np.nan
+                            x_str = str(x).upper()
+                            if x_str == 'YES':
+                                return 1
+                            elif x_str == 'NO':
+                                return 0
+                            else:
+                                return np.nan
+                        ml_predictions[col] = ml_predictions[col].apply(convert_correct)
+                
+                st.sidebar.success(f"✅ ML Model loaded successfully!")
+                st.sidebar.metric("ML Games Available", len(ml_predictions))
+                
+                # Show date range
+                if 'date' in ml_predictions.columns and len(ml_predictions) > 0:
+                    min_date = ml_predictions['date'].min().strftime('%Y-%m-%d')
+                    max_date = ml_predictions['date'].max().strftime('%Y-%m-%d')
+                    st.sidebar.caption(f"📅 Date range: {min_date} to {max_date}")
+                    
+                    # Show unique dates count
+                    unique_dates = ml_predictions['date'].dt.date.nunique()
+                    st.sidebar.caption(f"📆 {unique_dates} unique game dates")
+                
         except Exception as ml_error:
+            import traceback
+            error_trace = traceback.format_exc()
             st.sidebar.error("❌ ML Model failed to load")
             st.sidebar.caption(f"Error: {str(ml_error)}")
+            with st.sidebar.expander("🔍 Show detailed error"):
+                st.code(error_trace, language='python')
             ml_predictions = pd.DataFrame()
         
         return predictions, standings, ml_predictions, load_timestamp
@@ -432,56 +472,65 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
     if ml_predictions is None or len(ml_predictions) == 0:
         return {'has_ml': False}
     
+    # Ensure game_date is datetime
     if isinstance(game_date, str):
         game_date = pd.to_datetime(game_date)
     
-    ml_game = ml_predictions[
-        (ml_predictions['home_team'] == home_team) & 
-        (ml_predictions['away_team'] == away_team) &
-        (ml_predictions['date'].dt.date == game_date.date())
-    ]
+    # Debug: Check if date column exists
+    if 'date' not in ml_predictions.columns:
+        return {'has_ml': False, 'error': 'date column missing'}
     
-    if len(ml_game) > 0:
-        ml_game = ml_game.iloc[0]
-        
-        # Get scores with proper conversion
-        ml_home_score = ml_game.get('ml_predicted_home_score', 3)
-        ml_away_score = ml_game.get('ml_predicted_away_score', 2)
-        
-        # Convert to int if not NaN
-        try:
-            ml_home_score = int(float(ml_home_score)) if pd.notna(ml_home_score) else 3
-            ml_away_score = int(float(ml_away_score)) if pd.notna(ml_away_score) else 2
-        except:
-            ml_home_score = 3
-            ml_away_score = 2
-        
-        # Get OT prediction
-        ml_is_overtime = False
-        if 'ml_is_overtime' in ml_game.index:
-            ot_val = ml_game['ml_is_overtime']
-            if pd.notna(ot_val):
-                ml_is_overtime = bool(ot_val)
-        
-        ml_overtime_prob = 0.0
-        if 'ml_overtime_probability' in ml_game.index:
-            ot_prob = ml_game['ml_overtime_probability']
-            if pd.notna(ot_prob):
-                ml_overtime_prob = float(ot_prob)
-        
-        return {
-            'ml_predicted_winner': ml_game['ml_predicted_winner'],
-            'ml_home_win_prob': ml_game['ml_home_win_prob'],
-            'ml_away_win_prob': ml_game['ml_away_win_prob'],
-            'ml_confidence': ml_game['ml_confidence'],
-            'ml_predicted_home': ml_home_score,
-            'ml_predicted_away': ml_away_score,
-            'ml_is_overtime': ml_is_overtime,
-            'ml_overtime_probability': ml_overtime_prob,
-            'has_ml': True
-        }
-    else:
+    # Find matching game - compare dates as date objects (not datetime)
+    try:
+        ml_game = ml_predictions[
+            (ml_predictions['home_team'] == home_team) & 
+            (ml_predictions['away_team'] == away_team) &
+            (ml_predictions['date'].dt.date == game_date.date())
+        ]
+    except Exception as e:
+        return {'has_ml': False, 'error': str(e)}
+    
+    if len(ml_game) == 0:
         return {'has_ml': False}
+    
+    ml_game = ml_game.iloc[0]
+    
+    # Get scores with proper conversion
+    ml_home_score = ml_game.get('ml_predicted_home_score', 3)
+    ml_away_score = ml_game.get('ml_predicted_away_score', 2)
+    
+    # Convert to int if not NaN
+    try:
+        ml_home_score = int(float(ml_home_score)) if pd.notna(ml_home_score) else 3
+        ml_away_score = int(float(ml_away_score)) if pd.notna(ml_away_score) else 2
+    except:
+        ml_home_score = 3
+        ml_away_score = 2
+    
+    # Get OT prediction
+    ml_is_overtime = False
+    if 'ml_is_overtime' in ml_game.index:
+        ot_val = ml_game['ml_is_overtime']
+        if pd.notna(ot_val):
+            ml_is_overtime = bool(ot_val)
+    
+    ml_overtime_prob = 0.0
+    if 'ml_overtime_probability' in ml_game.index:
+        ot_prob = ml_game['ml_overtime_probability']
+        if pd.notna(ot_prob):
+            ml_overtime_prob = float(ot_prob)
+    
+    return {
+        'ml_predicted_winner': ml_game['ml_predicted_winner'],
+        'ml_home_win_prob': ml_game['ml_home_win_prob'],
+        'ml_away_win_prob': ml_game['ml_away_win_prob'],
+        'ml_confidence': ml_game['ml_confidence'],
+        'ml_predicted_home': ml_home_score,
+        'ml_predicted_away': ml_away_score,
+        'ml_is_overtime': ml_is_overtime,
+        'ml_overtime_probability': ml_overtime_prob,
+        'has_ml': True
+    }
 
 def get_ot_badge_html(ot_prob, is_ot):
     """Generate OT badge HTML"""
