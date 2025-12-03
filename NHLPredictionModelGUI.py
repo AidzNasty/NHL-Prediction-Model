@@ -246,7 +246,7 @@ def load_data():
                     break
             
             if date_col:
-                ml_predictions['date'] = pd.to_datetime(ml_predictions[date_col])
+                ml_predictions['game_date'] = pd.to_datetime(ml_predictions[date_col])
             
             # Rename columns
             rename_map = {
