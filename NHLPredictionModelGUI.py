@@ -65,7 +65,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
+EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 
 @st.cache_data(ttl=3600)
 def load_data():
