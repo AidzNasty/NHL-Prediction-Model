@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import pytz
 
 # Page config
 st.set_page_config(
@@ -66,6 +67,7 @@ st.markdown("""
 
 # Constants
 EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+EASTERN = pytz.timezone('America/New_York')  # Eastern Time (handles EST/EDT automatically)
 
 @st.cache_data(ttl=3600)
 def load_data():
@@ -326,7 +328,8 @@ def main():
         return
     
     st.title("NHL Prediction Model 2025-26")
-    st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    eastern_now = datetime.now(EASTERN)
+    st.caption(f"Last updated: {eastern_now.strftime('%Y-%m-%d %I:%M:%S %p')} ET")
     
     # Sidebar
     st.sidebar.title("Navigation")
@@ -338,8 +341,10 @@ def main():
     page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Performance"])
     
     if page == "Today's Games":
-        # Use pandas Timestamp for proper date comparison
-        today = pd.Timestamp.now().normalize()
+        # Get current date in Eastern Time
+        eastern_now = datetime.now(EASTERN)
+        today = pd.Timestamp(eastern_now.date()).normalize()
+        
         todays_games = predictions[predictions['Date'] == today].copy()
         
         if len(todays_games) == 0:
@@ -370,7 +375,8 @@ def main():
         
         if st.button("Generate Prediction"):
             if away_team != "Select..." and home_team != "Select..." and away_team != home_team:
-                today = datetime.now()
+                eastern_now = datetime.now(EASTERN)
+                today = pd.Timestamp(eastern_now.date()).normalize()
                 excel_pred = calculate_excel_prediction(home_team, away_team, standings, None, None)
                 ml_pred = get_ml_prediction(home_team, away_team, today, ml_predictions)
                 
