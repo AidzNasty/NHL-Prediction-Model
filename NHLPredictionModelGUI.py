@@ -65,7 +65,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
 
 @st.cache_data(ttl=3600)
 def load_data():
@@ -77,7 +77,9 @@ def load_data():
         predictions_data = excel_predictions_raw.iloc[1:].reset_index(drop=True)
         predictions_data.columns = header_row
         predictions = predictions_data.iloc[:, 3:].copy()
-        predictions['Date'] = pd.to_datetime(predictions['Date'])
+        
+        # Fix: Normalize dates to remove timezone and time components
+        predictions['Date'] = pd.to_datetime(predictions['Date']).dt.normalize()
         
         # Load standings
         standings = pd.read_excel(EXCEL_FILE, sheet_name='Standings')
@@ -88,7 +90,8 @@ def load_data():
             ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
             
             if 'game_date' in ml_predictions.columns:
-                ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'], errors='coerce')
+                # Fix: Normalize dates to remove timezone and time components
+                ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'], errors='coerce').dt.normalize()
             
             # Rename columns
             rename_map = {
@@ -132,10 +135,18 @@ def calculate_excel_prediction(home_team, away_team, standings, predictions, gam
     
     if predictions is not None and game_date is not None:
         try:
+            # Normalize both dates for comparison
+            if isinstance(game_date, str):
+                game_date_normalized = pd.to_datetime(game_date).normalize()
+            elif hasattr(game_date, 'normalize'):
+                game_date_normalized = game_date.normalize()
+            else:
+                game_date_normalized = pd.Timestamp(game_date).normalize()
+            
             game_match = predictions[
                 (predictions['Home'] == home_team) & 
                 (predictions['Visitor'] == away_team) &
-                (predictions['Date'].dt.date == game_date.date())
+                (predictions['Date'] == game_date_normalized)
             ]
             
             if len(game_match) > 0:
@@ -200,14 +211,20 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
     if ml_predictions is None or len(ml_predictions) == 0:
         return None
     
+    # Normalize game_date to remove time component
     if isinstance(game_date, str):
-        game_date = pd.to_datetime(game_date)
+        game_date = pd.to_datetime(game_date).normalize()
+    elif hasattr(game_date, 'normalize'):
+        game_date = game_date.normalize()
+    else:
+        game_date = pd.Timestamp(game_date).normalize()
     
     try:
+        # Compare normalized timestamps
         ml_game = ml_predictions[
             (ml_predictions['home_team'] == home_team) & 
             (ml_predictions['away_team'] == away_team) &
-            (ml_predictions['date'].dt.date == game_date.date())
+            (ml_predictions['date'] == game_date)
         ]
     except:
         return None
@@ -321,14 +338,15 @@ def main():
     page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Performance"])
     
     if page == "Today's Games":
-        today = datetime.now().date()
-        todays_games = predictions[predictions['Date'].dt.date == today].copy()
+        # Use pandas Timestamp for proper date comparison
+        today = pd.Timestamp.now().normalize()
+        todays_games = predictions[predictions['Date'] == today].copy()
         
         if len(todays_games) == 0:
             st.warning("No games scheduled today")
             
             # Show upcoming games
-            future_games = predictions[predictions['Date'].dt.date > today].head(5)
+            future_games = predictions[predictions['Date'] > today].head(5)
             if len(future_games) > 0:
                 st.subheader("Upcoming Games")
                 for _, game in future_games.iterrows():
