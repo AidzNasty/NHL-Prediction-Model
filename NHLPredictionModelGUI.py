@@ -517,7 +517,7 @@ def main():
         st.cache_data.clear()
         st.rerun()
     
-    page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Performance"])
+    page = st.sidebar.radio("Select Page", ["Today's Games", "Custom Matchup", "Performance", "Player Leaderboard", "Team Standings"])
     
     if page == "Today's Games":
         eastern_now = datetime.now(EASTERN)
@@ -644,6 +644,147 @@ def main():
                 st.info("No completed games")
         else:
             st.info("ML model not available")
+    
+    # PLAYER LEADERBOARD PAGE
+    elif page == "Player Leaderboard":
+        st.subheader("Player Leaderboard 2025-26")
+        
+        # Create tabs for different stat categories
+        leaderboard_tab = st.tabs(["Goals", "Assists", "Points", "Goals/Game", "Shooting %", "Plus/Minus"])
+        
+        # Goals Leaders
+        with leaderboard_tab[0]:
+            st.markdown("**Top 20 Goal Scorers**")
+            goals_leaders = players.nlargest(20, 'G')[['Player', 'Team', 'Pos', 'GP', 'G', 'A', 'PTS']].copy()
+            goals_leaders.insert(0, 'Rank', range(1, len(goals_leaders) + 1))
+            st.dataframe(goals_leaders, hide_index=True, use_container_width=True)
+        
+        # Assists Leaders
+        with leaderboard_tab[1]:
+            st.markdown("**Top 20 Assist Leaders**")
+            assists_leaders = players.nlargest(20, 'A')[['Player', 'Team', 'Pos', 'GP', 'G', 'A', 'PTS']].copy()
+            assists_leaders.insert(0, 'Rank', range(1, len(assists_leaders) + 1))
+            st.dataframe(assists_leaders, hide_index=True, use_container_width=True)
+        
+        # Points Leaders
+        with leaderboard_tab[2]:
+            st.markdown("**Top 20 Point Leaders**")
+            points_leaders = players.nlargest(20, 'PTS')[['Player', 'Team', 'Pos', 'GP', 'G', 'A', 'PTS']].copy()
+            points_leaders.insert(0, 'Rank', range(1, len(points_leaders) + 1))
+            st.dataframe(points_leaders, hide_index=True, use_container_width=True)
+        
+        # Goals Per Game
+        with leaderboard_tab[3]:
+            st.markdown("**Top 20 Goals Per Game** (min 10 GP)")
+            qualified = players[players['GP'] >= 10].copy()
+            qualified['G/GP'] = (qualified['G'] / qualified['GP']).round(3)
+            gpg_leaders = qualified.nlargest(20, 'G/GP')[['Player', 'Team', 'Pos', 'GP', 'G', 'G/GP']].copy()
+            gpg_leaders.insert(0, 'Rank', range(1, len(gpg_leaders) + 1))
+            st.dataframe(gpg_leaders, hide_index=True, use_container_width=True)
+        
+        # Shooting Percentage
+        with leaderboard_tab[4]:
+            st.markdown("**Top 20 Shooting %** (min 50 shots)")
+            qualified_shots = players[players['SOG'] >= 50].copy()
+            qualified_shots['SH%'] = (qualified_shots['SPCT']).round(1)
+            shooting_leaders = qualified_shots.nlargest(20, 'SH%')[['Player', 'Team', 'Pos', 'GP', 'G', 'SOG', 'SH%']].copy()
+            shooting_leaders.insert(0, 'Rank', range(1, len(shooting_leaders) + 1))
+            st.dataframe(shooting_leaders, hide_index=True, use_container_width=True)
+        
+        # Plus/Minus
+        with leaderboard_tab[5]:
+            st.markdown("**Top 20 Plus/Minus**")
+            pm_leaders = players.nlargest(20, '+/-')[['Player', 'Team', 'Pos', 'GP', 'G', 'A', 'PTS', '+/-']].copy()
+            pm_leaders.insert(0, 'Rank', range(1, len(pm_leaders) + 1))
+            st.dataframe(pm_leaders, hide_index=True, use_container_width=True)
+    
+    # TEAM STANDINGS PAGE
+    elif page == "Team Standings":
+        st.subheader("NHL Standings 2025-26")
+        
+        # Sort by points (descending)
+        standings_display = standings.sort_values('PTS', ascending=False).copy()
+        standings_display.insert(0, 'Rank', range(1, len(standings_display) + 1))
+        
+        # Create tabs for different views
+        standings_tab = st.tabs(["Overall Standings", "Home/Away Splits", "Offensive Stats", "Defensive Stats"])
+        
+        # Overall Standings
+        with standings_tab[0]:
+            st.markdown("**Overall Standings**")
+            overall = standings_display[['Rank', 'Team', 'GP', 'W', 'L', 'OTL', 'PTS', 'HomeWin%', 'AwayWin%']].copy()
+            overall['HomeWin%'] = (overall['HomeWin%'] * 100).round(1)
+            overall['AwayWin%'] = (overall['AwayWin%'] * 100).round(1)
+            st.dataframe(overall, hide_index=True, use_container_width=True)
+            
+            # Highlight top 3 and bottom 3
+            st.caption("Sorted by Points (PTS)")
+        
+        # Home/Away Splits
+        with standings_tab[1]:
+            st.markdown("**Home/Away Records**")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Home Records**")
+                home_stats = standings_display[['Team', 'HomeWins', 'HomeLoss', 'HomeOTL', 'HomeWin%']].copy()
+                home_stats['HomeWin%'] = (home_stats['HomeWin%'] * 100).round(1)
+                home_stats = home_stats.sort_values('HomeWin%', ascending=False)
+                home_stats.insert(0, 'Rank', range(1, len(home_stats) + 1))
+                st.dataframe(home_stats, hide_index=True, use_container_width=True)
+            
+            with col2:
+                st.markdown("**Away Records**")
+                away_stats = standings_display[['Team', 'AwayWins', 'AwayLoss', 'AwayOTL', 'AwayWin%']].copy()
+                away_stats['AwayWin%'] = (away_stats['AwayWin%'] * 100).round(1)
+                away_stats = away_stats.sort_values('AwayWin%', ascending=False)
+                away_stats.insert(0, 'Rank', range(1, len(away_stats) + 1))
+                st.dataframe(away_stats, hide_index=True, use_container_width=True)
+        
+        # Offensive Stats
+        with standings_tab[2]:
+            st.markdown("**Offensive Statistics**")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Home Offense**")
+                home_offense = standings_display[['Team', 'Home Goals per Game']].copy()
+                home_offense = home_offense.sort_values('Home Goals per Game', ascending=False)
+                home_offense.insert(0, 'Rank', range(1, len(home_offense) + 1))
+                home_offense['Home Goals per Game'] = home_offense['Home Goals per Game'].round(2)
+                st.dataframe(home_offense, hide_index=True, use_container_width=True)
+            
+            with col2:
+                st.markdown("**Away Offense**")
+                away_offense = standings_display[['Team', 'Away Goals per Game']].copy()
+                away_offense = away_offense.sort_values('Away Goals per Game', ascending=False)
+                away_offense.insert(0, 'Rank', range(1, len(away_offense) + 1))
+                away_offense['Away Goals per Game'] = away_offense['Away Goals per Game'].round(2)
+                st.dataframe(away_offense, hide_index=True, use_container_width=True)
+        
+        # Defensive Stats
+        with standings_tab[3]:
+            st.markdown("**Defensive Statistics** (Lower is Better)")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Home Defense**")
+                home_defense = standings_display[['Team', 'Home Goals Against']].copy()
+                home_defense = home_defense.sort_values('Home Goals Against', ascending=True)
+                home_defense.insert(0, 'Rank', range(1, len(home_defense) + 1))
+                home_defense['Home Goals Against'] = home_defense['Home Goals Against'].round(2)
+                st.dataframe(home_defense, hide_index=True, use_container_width=True)
+            
+            with col2:
+                st.markdown("**Away Defense**")
+                away_defense = standings_display[['Team', 'Away Goals Against']].copy()
+                away_defense = away_defense.sort_values('Away Goals Against', ascending=True)
+                away_defense.insert(0, 'Rank', range(1, len(away_defense) + 1))
+                away_defense['Away Goals Against'] = away_defense['Away Goals Against'].round(2)
+                st.dataframe(away_defense, hide_index=True, use_container_width=True)
 
 if __name__ == "__main__":
     main()
