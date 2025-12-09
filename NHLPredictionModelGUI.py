@@ -79,7 +79,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
+EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 EASTERN = pytz.timezone('America/New_York')
 
 # Team abbreviation mapping
