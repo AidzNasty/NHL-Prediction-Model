@@ -209,13 +209,21 @@ def predict_player_performance(player, opponent_team, standings):
     goals_pg = player['goals_pg']
     assists_pg = player['assists_pg']
     
-    # Get opponent defense strength
+    # Get opponent row
     opponent = standings[standings['Team'] == opponent_team].iloc[0]
     
-    # Calculate total goals against (home + away average)
-    standings['Total Goals Against'] = (standings['Home Goals Against'] + standings['Away Goals Against']) / 2
-    league_avg_ga = standings['Total Goals Against'].mean()
-    defensive_factor = opponent['Total Goals Against'] / league_avg_ga
+    # Calculate opponent's total goals against using Excel column names
+    opponent_home_ga = opponent['Home Goals Against']
+    opponent_away_ga = opponent['Away Goals Against']
+    opponent_total_ga = (opponent_home_ga + opponent_away_ga) / 2
+    
+    # Calculate league average goals against
+    league_home_ga = standings['Home Goals Against'].mean()
+    league_away_ga = standings['Away Goals Against'].mean()
+    league_avg_ga = (league_home_ga + league_away_ga) / 2
+    
+    # Calculate defensive factor
+    defensive_factor = opponent_total_ga / league_avg_ga
     
     # Shot volume matters
     shot_factor = min(player['shots_pg'] / 2.5, 1.5) if player['shots_pg'] > 0 else 1.0
