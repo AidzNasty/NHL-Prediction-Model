@@ -79,7 +79,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Constants
-EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
+EXCEL_FILE = 'Aidan_Conte_NHL_2025-26_Prediction_Model.xlsx'
 EASTERN = pytz.timezone('America/New_York')
 
 # Team abbreviation mapping
@@ -211,8 +211,11 @@ def predict_player_performance(player, opponent_team, standings):
     
     # Get opponent defense strength
     opponent = standings[standings['Team'] == opponent_team].iloc[0]
-    league_avg_ga = standings['Goals Against'].mean()
-    defensive_factor = opponent['Goals Against'] / league_avg_ga
+    
+    # Calculate total goals against (home + away average)
+    standings['Total Goals Against'] = (standings['Home Goals Against'] + standings['Away Goals Against']) / 2
+    league_avg_ga = standings['Total Goals Against'].mean()
+    defensive_factor = opponent['Total Goals Against'] / league_avg_ga
     
     # Shot volume matters
     shot_factor = min(player['shots_pg'] / 2.5, 1.5) if player['shots_pg'] > 0 else 1.0
