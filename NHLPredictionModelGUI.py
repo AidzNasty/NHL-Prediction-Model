@@ -301,6 +301,22 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return None, None, None
 
+@st.cache_data(ttl=3600)
+def load_player_stats():
+    """Load player stats from CSV"""
+    try:
+        player_stats_file = 'NHL2025-26PlayerStats.csv'
+        # Try to read the CSV file
+        df = pd.read_csv(player_stats_file, sep='~', encoding='utf-8', errors='ignore')
+        # Clean up the data - remove empty rows and columns
+        df = df.dropna(how='all').dropna(axis=1, how='all')
+        # Remove rows that are all empty or just headers
+        df = df[df.iloc[:, 0].notna()]
+        return df
+    except Exception as e:
+        st.sidebar.warning(f"Player stats file not found: {str(e)}")
+        return None
+
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
     """Calculate Excel model prediction"""
     home_row = standings[standings['Team'] == home_team].iloc[0]
@@ -431,7 +447,7 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
     }
 
 def display_game(game, standings, predictions, ml_predictions):
-    """Display a single game prediction with enhanced visuals"""
+    """Display a single game prediction with clean, compact layout"""
     home_team = game['Home']
     away_team = game['Visitor']
     game_time = game['Time']
@@ -448,54 +464,52 @@ def display_game(game, standings, predictions, ml_predictions):
     with st.container():
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
-        # Header with game time
-        st.markdown(f'<div class="game-time">🕐 {game_time}</div>', unsafe_allow_html=True)
-        
-        # Teams with enhanced styling
-        col1, col2, col3 = st.columns([2, 1, 2])
+        # Compact header with time and teams
+        col1, col2, col3 = st.columns([3, 2, 3])
         with col1:
-            st.markdown(f'<div class="team-name">✈️ {away_team}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-record">📊 {int(away_row["W"])}-{int(away_row["L"])}-{int(away_row["OTL"])} | {int(away_row["PTS"])} pts</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 600; color: #003e7e;">{away_team}</div>', unsafe_allow_html=True)
+            st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} | {int(away_row['PTS'])} pts")
         with col2:
-            st.markdown("<h2 style='text-align: center; color: #003e7e; margin: 0.5rem 0;'>@</h2>", unsafe_allow_html=True)
+            st.markdown(f'<div style="text-align: center; color: #666; font-size: 0.9rem; margin-top: 0.5rem;">{game_time}</div>', unsafe_allow_html=True)
+            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 700; color: #003e7e; margin: 0.25rem 0;">VS</div>', unsafe_allow_html=True)
         with col3:
-            st.markdown(f'<div class="team-name" style="text-align: right;">🏠 {home_team}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-record" style="text-align: right;">📊 {int(home_row["W"])}-{int(home_row["L"])}-{int(home_row["OTL"])} | {int(home_row["PTS"])} pts</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 600; color: #003e7e; text-align: right;">{home_team}</div>', unsafe_allow_html=True)
+            st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} | {int(home_row['PTS'])} pts")
         
-        st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 2px solid #e0e0e0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
         
-        # Predictions with enhanced boxes
+        # Compact predictions side by side
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown('<div class="prediction-box excel-box">', unsafe_allow_html=True)
-            st.markdown("### 📊 Excel Model", unsafe_allow_html=True)
-            st.markdown(f'<div class="winner-text">🏆 {excel_pred["winner"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="score-text">{away_team} <strong>{excel_pred["away_score"]}</strong> - <strong>{excel_pred["home_score"]}</strong> {home_team}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="confidence-badge">Confidence: {excel_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
+            st.markdown("**📊 Excel Model**", unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 700; color: #003e7e; margin: 0.5rem 0;">🏆 {excel_pred["winner"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size: 1.3rem; font-weight: 700; color: #1a1a2e; margin: 0.5rem 0;">{excel_pred["away_score"]} - {excel_pred["home_score"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{excel_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
             if excel_pred['ot_probability'] > 0.25:
-                st.markdown(f'<div class="metric-label" style="margin-top: 0.5rem;">⏱️ OT Probability: <strong>{excel_pred["ot_probability"]:.1%}</strong></div>', unsafe_allow_html=True)
+                st.caption(f"⏱️ OT: {excel_pred['ot_probability']:.1%}")
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
             st.markdown('<div class="prediction-box ml-box">', unsafe_allow_html=True)
-            st.markdown("### 🤖 ML Model", unsafe_allow_html=True)
+            st.markdown("**🤖 ML Model**", unsafe_allow_html=True)
             if ml_pred:
-                st.markdown(f'<div class="winner-text">🏆 {ml_pred["winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="score-text">{away_team} <strong>{ml_pred["away_score"]}</strong> - <strong>{ml_pred["home_score"]}</strong> {home_team}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="confidence-badge">Confidence: {ml_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 1.1rem; font-weight: 700; color: #9c27b0; margin: 0.5rem 0;">🏆 {ml_pred["winner"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 1.3rem; font-weight: 700; color: #1a1a2e; margin: 0.5rem 0;">{ml_pred["away_score"]} - {ml_pred["home_score"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{ml_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
                 if ml_pred['is_overtime']:
-                    st.markdown('<div class="metric-label" style="margin-top: 0.5rem; color: #9c27b0; font-weight: 600;">⏱️ Overtime Predicted</div>', unsafe_allow_html=True)
+                    st.caption("⏱️ Overtime Predicted")
             else:
-                st.info("🤖 No ML prediction available")
+                st.info("No ML prediction")
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Agreement indicator with enhanced styling
+        # Compact agreement indicator
         if ml_pred:
             if excel_pred['winner'] == ml_pred['winner']:
-                st.markdown('<div class="agreement-indicator agreement-yes">✅ Both models agree on winner: <strong>' + excel_pred['winner'] + '</strong></div>', unsafe_allow_html=True)
+                st.success(f"✅ Both models agree: **{excel_pred['winner']}**")
             else:
-                st.markdown(f'<div class="agreement-indicator agreement-no">⚠️ Models disagree: Excel → {excel_pred["winner"]} | ML → {ml_pred["winner"]}</div>', unsafe_allow_html=True)
+                st.warning(f"⚠️ Models disagree: Excel → {excel_pred['winner']} | ML → {ml_pred['winner']}")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -532,7 +546,7 @@ def main():
     
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio("📄 Select Page", ["Today's Games", "Custom Matchup", "Performance"], label_visibility="visible")
+    page = st.sidebar.radio("📄 Select Page", ["Today's Games", "Custom Matchup", "Standings", "Player Stats", "Performance"], label_visibility="visible")
     
     if page == "Today's Games":
         # Get current date in Eastern Time
@@ -641,6 +655,118 @@ def main():
                         st.markdown(f'<div class="agreement-indicator agreement-no">⚠️ Models disagree: Excel → {excel_pred["winner"]} | ML → {ml_pred["winner"]}</div>', unsafe_allow_html=True)
             else:
                 st.error("❌ Please select two different teams")
+    
+    elif page == "Standings":
+        st.markdown("""
+            <div style='background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
+                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
+                        border-left: 4px solid #4caf50;'>
+                <h2 style='color: #2e7d32; margin: 0;'>🏆 NHL Standings 2025-26</h2>
+                <p style='color: #2e7d32; margin: 0.5rem 0 0 0;'>Current team standings and statistics</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Display standings table
+        if standings is not None and len(standings) > 0:
+            # Select key columns to display
+            display_cols = ['Team', 'GP', 'W', 'L', 'OTL', 'PTS', 'HomeWin%', 'AwayWin%']
+            available_cols = [col for col in display_cols if col in standings.columns]
+            
+            if len(available_cols) > 0:
+                standings_display = standings[available_cols].copy()
+                standings_display = standings_display.sort_values('PTS', ascending=False)
+                
+                # Format percentages
+                if 'HomeWin%' in standings_display.columns:
+                    standings_display['HomeWin%'] = standings_display['HomeWin%'].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "N/A")
+                if 'AwayWin%' in standings_display.columns:
+                    standings_display['AwayWin%'] = standings_display['AwayWin%'].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "N/A")
+                
+                # Rename columns for better display
+                standings_display.columns = standings_display.columns.str.replace('HomeWin%', 'Home Win %')
+                standings_display.columns = standings_display.columns.str.replace('AwayWin%', 'Away Win %')
+                
+                st.dataframe(
+                    standings_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=600
+                )
+            else:
+                st.dataframe(standings, use_container_width=True, hide_index=True, height=600)
+        else:
+            st.error("❌ Unable to load standings data")
+    
+    elif page == "Player Stats":
+        st.markdown("""
+            <div style='background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); 
+                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
+                        border-left: 4px solid #ff9800;'>
+                <h2 style='color: #e65100; margin: 0;'>⭐ NHL Player Statistics 2025-26</h2>
+                <p style='color: #e65100; margin: 0.5rem 0 0 0;'>Top player performance metrics</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        player_stats = load_player_stats()
+        
+        if player_stats is not None and len(player_stats) > 0:
+            # Clean up column names
+            player_stats.columns = player_stats.columns.str.strip()
+            
+            # Try to identify key columns
+            key_cols = []
+            possible_cols = {
+                'Player': ['Player', 'player', 'Name', 'name'],
+                'Team': ['Team', 'team', 'Tm', 'tm'],
+                'GP': ['GP', 'gp', 'Games', 'games'],
+                'G': ['G', 'g', 'Goals', 'goals'],
+                'A': ['A', 'a', 'Assists', 'assists'],
+                'PTS': ['PTS', 'pts', 'Points', 'points', 'P', 'p']
+            }
+            
+            for display_name, possible_names in possible_cols.items():
+                for col in player_stats.columns:
+                    if col in possible_names:
+                        key_cols.append(col)
+                        break
+            
+            # If we found key columns, display them
+            if len(key_cols) > 0:
+                # Remove duplicates while preserving order
+                key_cols = list(dict.fromkeys(key_cols))
+                player_display = player_stats[key_cols].copy()
+                
+                # Try to sort by points if available
+                pts_col = None
+                for col in ['PTS', 'pts', 'Points', 'points', 'P', 'p']:
+                    if col in player_display.columns:
+                        pts_col = col
+                        break
+                
+                if pts_col:
+                    # Convert to numeric, handling any non-numeric values
+                    player_display[pts_col] = pd.to_numeric(player_display[pts_col], errors='coerce')
+                    player_display = player_display.sort_values(pts_col, ascending=False, na_position='last')
+                    player_display = player_display.head(100)  # Show top 100
+                
+                st.dataframe(
+                    player_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=600
+                )
+            else:
+                # Display all columns if we can't identify key ones
+                st.dataframe(
+                    player_stats.head(100),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=600
+                )
+            
+            st.caption(f"📊 Showing data for {len(player_stats)} players")
+        else:
+            st.warning("⚠️ Player stats data not available. Please ensure NHL2025-26PlayerStats.csv exists in the project directory.")
     
     elif page == "Performance":
         st.markdown("""
