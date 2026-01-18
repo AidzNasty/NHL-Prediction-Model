@@ -24,13 +24,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# Enhanced Modern CSS with NHL Theme
+# DraftKings/FanDuel Style CSS
 st.markdown("""
     <style>
-    /* Main styling */
+    /* Main styling - Dark theme like DraftKings/FanDuel */
     .main {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-        padding: 2rem;
+        background: #0d1117;
+        padding: 1rem;
     }
     
     /* Hide Streamlit default elements */
@@ -38,205 +38,253 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Typography */
+    /* Dark background for entire app */
+    .stApp {
+        background: #0d1117;
+    }
+    
+    /* Typography - White text on dark */
     h1 {
-        color: #1a1a2e;
+        color: #ffffff;
         font-weight: 700;
-        font-size: 2.5rem;
+        font-size: 2rem;
         margin-bottom: 0.5rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
     }
     
     h2, h3 {
-        color: #1a1a2e;
+        color: #ffffff;
         font-weight: 600;
     }
     
-    /* Game Card - Modern with shadow and gradient */
-    .game-card {
-        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
-        padding: 2rem;
-        border-radius: 16px;
-        border: none;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
-        margin: 1.5rem 0;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    
-    .game-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Prediction Box - Enhanced with NHL colors */
-    .prediction-box {
-        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 2px solid #e0e0e0;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
-    }
-    
-    .prediction-box:hover {
-        border-color: #003e7e;
-        box-shadow: 0 6px 16px rgba(0, 62, 126, 0.15);
-    }
-    
-    /* Excel Model Box - Blue theme */
-    .excel-box {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-        border-color: #2196f3;
-    }
-    
-    /* ML Model Box - Purple/Teal theme */
-    .ml-box {
-        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
-        border-color: #9c27b0;
-    }
-    
-    /* Winner Text - Bold and colorful */
-    .winner-text {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #003e7e;
-        margin: 0.5rem 0;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-    }
-    
-    /* Score Text - Large and prominent */
-    .score-text {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #1a1a2e;
-        margin: 0.75rem 0;
-        letter-spacing: 1px;
-    }
-    
-    /* Metric Label - Subtle but readable */
-    .metric-label {
-        font-size: 0.95rem;
-        color: #555;
-        margin: 0.25rem 0;
-        font-weight: 500;
-    }
-    
-    /* Team Name Styling */
-    .team-name {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #003e7e;
-        margin-bottom: 0.5rem;
-    }
-    
-    .team-record {
-        font-size: 0.9rem;
-        color: #666;
-        font-weight: 500;
-    }
-    
-    /* Confidence Badge */
-    .confidence-badge {
-        display: inline-block;
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-        color: white;
-        font-weight: 600;
-        font-size: 0.9rem;
-        margin-top: 0.5rem;
-    }
-    
-    /* Agreement Indicator */
-    .agreement-indicator {
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        font-weight: 600;
-        margin-top: 1rem;
-        text-align: center;
-    }
-    
-    .agreement-yes {
-        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-        color: white;
-    }
-    
-    .agreement-no {
-        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
-        color: white;
-    }
-    
-    /* Game Time Header */
-    .game-time {
-        font-size: 1rem;
-        color: #666;
-        font-weight: 600;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #e0e0e0;
-    }
-    
-    /* Sidebar Styling */
+    /* Sidebar dark theme */
     .css-1d391kg {
-        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        background: #161b22;
+        border-right: 1px solid #30363d;
     }
     
-    /* Metric Cards */
-    .metric-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        text-align: center;
-        border-top: 4px solid #003e7e;
-    }
-    
-    /* Custom Button Styling */
-    .stButton > button {
-        background: linear-gradient(135deg, #003e7e 0%, #0056b3 100%);
-        color: white;
-        border: none;
+    /* Radio buttons styled */
+    .stRadio > div {
+        background: #161b22;
+        padding: 0.5rem;
         border-radius: 8px;
-        padding: 0.5rem 2rem;
+    }
+    
+    .stRadio label {
+        color: #c9d1d9;
+        font-weight: 500;
+    }
+    
+    /* Buttons - Green accent like DraftKings */
+    .stButton > button {
+        background: #00d4aa;
+        color: #0d1117;
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem 1.5rem;
         font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(0, 62, 126, 0.3);
+        transition: all 0.2s ease;
     }
     
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0, 62, 126, 0.4);
+        background: #00b894;
+        transform: translateY(-1px);
     }
     
-    /* Selectbox Styling */
+    /* Selectbox dark theme */
     .stSelectbox > div > div {
-        background: white;
+        background: #161b22;
+        border: 1px solid #30363d;
+        color: #c9d1d9;
+    }
+    
+    /* Dataframe dark theme */
+    .dataframe {
+        background: #161b22;
+        color: #c9d1d9;
+    }
+    
+    /* Caption text */
+    .stCaption {
+        color: #8b949e;
+    }
+    
+    /* Info boxes */
+    .stInfo {
+        background: #161b22;
+        border-left: 4px solid #00d4aa;
+        color: #c9d1d9;
+    }
+    
+    .stSuccess {
+        background: #161b22;
+        border-left: 4px solid #00d4aa;
+        color: #c9d1d9;
+    }
+    
+    .stWarning {
+        background: #161b22;
+        border-left: 4px solid #ffa500;
+        color: #c9d1d9;
+    }
+    
+    .stError {
+        background: #161b22;
+        border-left: 4px solid #f85149;
+        color: #c9d1d9;
+    }
+    
+    /* Betting Card Style - Like DraftKings/FanDuel */
+    .betting-card {
+        background: #161b22;
+        border: 1px solid #30363d;
         border-radius: 8px;
-    }
-    
-    /* Radio Button Styling */
-    .stRadio > div {
-        background: white;
-        padding: 1rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
-    
-    /* Info/Warning/Success Messages */
-    .stAlert {
-        border-radius: 12px;
-        border-left: 4px solid;
-    }
-    
-    /* Performance Metrics */
-    .performance-metric {
-        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
         padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         margin: 1rem 0;
+        transition: all 0.2s ease;
     }
+    
+    .betting-card:hover {
+        border-color: #00d4aa;
+        box-shadow: 0 0 0 1px #00d4aa;
+    }
+    
+    /* Game Header */
+    .game-header {
+        color: #8b949e;
+        font-size: 0.85rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Team Display */
+    .team-display {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        border-bottom: 1px solid #30363d;
+    }
+    
+    .team-name-betting {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #ffffff;
+    }
+    
+    .team-record-betting {
+        font-size: 0.85rem;
+        color: #8b949e;
+        margin-top: 0.25rem;
+    }
+    
+    /* Odds Display - Like DraftKings */
+    .odds-box {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        text-align: center;
+        min-width: 100px;
+    }
+    
+    .odds-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #00d4aa;
+    }
+    
+    .odds-label {
+        font-size: 0.75rem;
+        color: #8b949e;
+        text-transform: uppercase;
+        margin-top: 0.25rem;
+    }
+    
+    /* Score Prediction */
+    .score-prediction {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #ffffff;
+        text-align: center;
+        padding: 0.5rem 0;
+    }
+    
+    /* Model Badge */
+    .model-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .badge-excel {
+        background: #1f6feb;
+        color: #ffffff;
+    }
+    
+    .badge-ml {
+        background: #a371f7;
+        color: #ffffff;
+    }
+    
+    /* Winner Highlight */
+    .winner-highlight {
+        color: #00d4aa;
+        font-weight: 700;
+    }
+    
+    /* Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .stat-card {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 1rem;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #00d4aa;
+    }
+    
+    .stat-label {
+        font-size: 0.85rem;
+        color: #8b949e;
+        margin-top: 0.5rem;
+    }
+    
+    /* Table Styling */
+    table {
+        background: #161b22;
+        color: #c9d1d9;
+    }
+    
+    thead {
+        background: #0d1117;
+        color: #ffffff;
+    }
+    
+    tbody tr {
+        border-bottom: 1px solid #30363d;
+    }
+    
+    tbody tr:hover {
+        background: #21262d;
+    }
+    
     </style>
 """, unsafe_allow_html=True)
 
@@ -446,8 +494,17 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
         'is_overtime': ml_is_overtime
     }
 
+def probability_to_american_odds(prob):
+    """Convert probability to American odds format"""
+    if prob >= 0.5:
+        odds = -((prob * 100) / (1 - prob))
+        return f"{int(odds)}"
+    else:
+        odds = ((1 - prob) * 100) / prob
+        return f"+{int(odds)}"
+
 def display_game(game, standings, predictions, ml_predictions):
-    """Display a single game prediction with clean, compact layout"""
+    """Display game in DraftKings/FanDuel betting card style"""
     home_team = game['Home']
     away_team = game['Visitor']
     game_time = game['Time']
@@ -461,57 +518,98 @@ def display_game(game, standings, predictions, ml_predictions):
     home_row = standings[standings['Team'] == home_team].iloc[0]
     away_row = standings[standings['Team'] == away_team].iloc[0]
     
-    with st.container():
-        st.markdown('<div class="game-card">', unsafe_allow_html=True)
-        
-        # Compact header with time and teams
-        col1, col2, col3 = st.columns([3, 2, 3])
-        with col1:
-            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 600; color: #003e7e;">{away_team}</div>', unsafe_allow_html=True)
-            st.caption(f"{int(away_row['W'])}-{int(away_row['L'])}-{int(away_row['OTL'])} | {int(away_row['PTS'])} pts")
-        with col2:
-            st.markdown(f'<div style="text-align: center; color: #666; font-size: 0.9rem; margin-top: 0.5rem;">{game_time}</div>', unsafe_allow_html=True)
-            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 700; color: #003e7e; margin: 0.25rem 0;">VS</div>', unsafe_allow_html=True)
-        with col3:
-            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 600; color: #003e7e; text-align: right;">{home_team}</div>', unsafe_allow_html=True)
-            st.caption(f"{int(home_row['W'])}-{int(home_row['L'])}-{int(home_row['OTL'])} | {int(home_row['PTS'])} pts")
-        
-        st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
-        
-        # Compact predictions side by side
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown('<div class="prediction-box excel-box">', unsafe_allow_html=True)
-            st.markdown("**📊 Excel Model**", unsafe_allow_html=True)
-            st.markdown(f'<div style="font-size: 1.1rem; font-weight: 700; color: #003e7e; margin: 0.5rem 0;">🏆 {excel_pred["winner"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div style="font-size: 1.3rem; font-weight: 700; color: #1a1a2e; margin: 0.5rem 0;">{excel_pred["away_score"]} - {excel_pred["home_score"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{excel_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
-            if excel_pred['ot_probability'] > 0.25:
-                st.caption(f"⏱️ OT: {excel_pred['ot_probability']:.1%}")
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown('<div class="prediction-box ml-box">', unsafe_allow_html=True)
-            st.markdown("**🤖 ML Model**", unsafe_allow_html=True)
-            if ml_pred:
-                st.markdown(f'<div style="font-size: 1.1rem; font-weight: 700; color: #9c27b0; margin: 0.5rem 0;">🏆 {ml_pred["winner"]}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="font-size: 1.3rem; font-weight: 700; color: #1a1a2e; margin: 0.5rem 0;">{ml_pred["away_score"]} - {ml_pred["home_score"]}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{ml_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
-                if ml_pred['is_overtime']:
-                    st.caption("⏱️ Overtime Predicted")
-            else:
-                st.info("No ML prediction")
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Compact agreement indicator
-        if ml_pred:
-            if excel_pred['winner'] == ml_pred['winner']:
-                st.success(f"✅ Both models agree: **{excel_pred['winner']}**")
-            else:
-                st.warning(f"⚠️ Models disagree: Excel → {excel_pred['winner']} | ML → {ml_pred['winner']}")
-        
+    st.markdown('<div class="betting-card">', unsafe_allow_html=True)
+    
+    # Game header
+    st.markdown(f'<div class="game-header">{game_time} ET</div>', unsafe_allow_html=True)
+    
+    # Excel Model Prediction
+    st.markdown('<span class="model-badge badge-excel">EXCEL MODEL</span>', unsafe_allow_html=True)
+    
+    # Teams and predictions
+    col1, col2, col3 = st.columns([3, 1, 2])
+    
+    with col1:
+        st.markdown(f'<div class="team-name-betting">{away_team}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="team-record-betting">{int(away_row["W"])}-{int(away_row["L"])}-{int(away_row["OTL"])} | {int(away_row["PTS"])} PTS</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="score-prediction">VS</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f'<div class="team-name-betting" style="text-align: right;">{home_team}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="team-record-betting" style="text-align: right;">{int(home_row["W"])}-{int(home_row["L"])}-{int(home_row["OTL"])} | {int(home_row["PTS"])} PTS</div>', unsafe_allow_html=True)
+    
+    st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
+    
+    # Prediction details
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+        winner_class = "winner-highlight" if excel_pred['winner'] == away_team else ""
+        st.markdown(f'<div class="odds-value {winner_class}">{excel_pred["away_score"]}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="odds-label">Away Score</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+        home_win_prob = excel_pred['confidence'] if excel_pred['winner'] == home_team else (1 - excel_pred['confidence'])
+        away_win_prob = excel_pred['confidence'] if excel_pred['winner'] == away_team else (1 - excel_pred['confidence'])
+        excel_away_odds = probability_to_american_odds(away_win_prob)
+        excel_home_odds = probability_to_american_odds(home_win_prob)
+        st.markdown(f'<div class="odds-value">{excel_away_odds}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="odds-label">Odds</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+        winner_class = "winner-highlight" if excel_pred['winner'] == home_team else ""
+        st.markdown(f'<div class="odds-value {winner_class}">{excel_pred["home_score"]}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="odds-label">Home Score</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown(f'<div style="text-align: center; margin-top: 1rem; color: #8b949e; font-size: 0.85rem;">Predicted Winner: <span class="winner-highlight">{excel_pred["winner"]}</span> | Confidence: {excel_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
+    
+    # ML Model if available
+    if ml_pred:
+        st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
+        st.markdown('<span class="model-badge badge-ml">ML MODEL</span>', unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+            winner_class = "winner-highlight" if ml_pred['winner'] == away_team else ""
+            st.markdown(f'<div class="odds-value {winner_class}">{ml_pred["away_score"]}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="odds-label">Away Score</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+            ml_away_win_prob = ml_pred['confidence'] if ml_pred['winner'] == away_team else ml_pred.get('away_win_probability', 1 - ml_pred['confidence'])
+            ml_away_odds = probability_to_american_odds(ml_away_win_prob)
+            st.markdown(f'<div class="odds-value">{ml_away_odds}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="odds-label">Odds</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown('<div class="odds-box">', unsafe_allow_html=True)
+            winner_class = "winner-highlight" if ml_pred['winner'] == home_team else ""
+            st.markdown(f'<div class="odds-value {winner_class}">{ml_pred["home_score"]}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="odds-label">Home Score</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        ot_text = " | Overtime Predicted" if ml_pred.get('is_overtime', False) else ""
+        st.markdown(f'<div style="text-align: center; margin-top: 1rem; color: #8b949e; font-size: 0.85rem;">Predicted Winner: <span class="winner-highlight">{ml_pred["winner"]}</span> | Confidence: {ml_pred["confidence"]:.1%}{ot_text}</div>', unsafe_allow_html=True)
+        
+        # Agreement
+        if excel_pred['winner'] == ml_pred['winner']:
+            st.markdown('<div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #00d4aa; font-weight: 600;">✓ Both Models Agree</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #ffa500; font-weight: 600;">⚠ Models Disagree</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
     predictions, standings, ml_predictions = load_data()
@@ -520,23 +618,23 @@ def main():
         st.error("❌ Error loading data. Please check your Excel file.")
         return
     
-    # Enhanced Header
+    # DraftKings/FanDuel Style Header
     st.markdown("""
-        <div style='text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #003e7e 0%, #0056b3 100%); 
-                    border-radius: 16px; margin-bottom: 2rem; box-shadow: 0 8px 24px rgba(0, 62, 126, 0.3);'>
-            <h1 style='color: white; margin: 0; padding: 0.5rem 0;'>🏒 NHL Prediction Model 2025-26</h1>
-            <p style='color: rgba(255,255,255,0.9); margin: 0.5rem 0; font-size: 1.1rem;'>Advanced Analytics & Machine Learning Predictions</p>
+        <div style='background: #161b22; border-bottom: 2px solid #00d4aa; padding: 1.5rem 0; margin-bottom: 2rem;'>
+            <div style='max-width: 1200px; margin: 0 auto; padding: 0 1rem;'>
+                <h1 style='color: #ffffff; margin: 0; font-size: 2rem; font-weight: 700;'>NHL PREDICTIONS</h1>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>2025-26 Season • Advanced Analytics & Machine Learning</p>
+            </div>
         </div>
     """, unsafe_allow_html=True)
     
     eastern_now = datetime.now(EASTERN)
-    st.caption(f"🕐 Last updated: {eastern_now.strftime('%Y-%m-%d %I:%M:%S %p')} ET")
+    st.caption(f"Last updated: {eastern_now.strftime('%Y-%m-%d %I:%M %p')} ET")
     
-    # Enhanced Sidebar
+    # Sidebar Navigation
     st.sidebar.markdown("""
-        <div style='background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
-                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;'>
-            <h2 style='color: white; margin: 0; text-align: center;'>🧭 Navigation</h2>
+        <div style='background: #161b22; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #30363d;'>
+            <h3 style='color: #ffffff; margin: 0; font-size: 1rem;'>NAVIGATION</h3>
         </div>
     """, unsafe_allow_html=True)
     
@@ -546,123 +644,14 @@ def main():
     
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio("📄 Select Page", ["Today's Games", "Custom Matchup", "Standings", "Player Stats", "Performance"], label_visibility="visible")
+    # Only three tabs as requested
+    page = st.sidebar.radio("", ["Standings", "Player Leaderboard", "Model Performance"], label_visibility="collapsed")
     
-    if page == "Today's Games":
-        # Get current date in Eastern Time
-        eastern_now = datetime.now(EASTERN)
-        today = pd.Timestamp(eastern_now.date()).normalize()
-        
-        todays_games = predictions[predictions['Date'] == today].copy()
-        
-        if len(todays_games) == 0:
-            st.markdown("""
-                <div style='background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); 
-                            padding: 2rem; border-radius: 12px; text-align: center; 
-                            border-left: 4px solid #ff9800; margin: 2rem 0;'>
-                    <h2 style='color: #856404; margin: 0 0 1rem 0;'>📅 No Games Scheduled Today</h2>
-                    <p style='color: #856404; font-size: 1.1rem;'>Check out upcoming games below!</p>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Show upcoming games with enhanced styling
-            future_games = predictions[predictions['Date'] > today].head(5)
-            if len(future_games) > 0:
-                st.markdown("### 🔮 Upcoming Games")
-                for _, game in future_games.iterrows():
-                    st.markdown(f"""
-                        <div style='background: white; padding: 1rem 1.5rem; border-radius: 8px; 
-                                    margin: 0.5rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                                    border-left: 4px solid #003e7e;'>
-                            <strong>{game['Visitor']}</strong> @ <strong>{game['Home']}</strong> 
-                            <span style='color: #666; float: right;'>{game['Date'].strftime('%B %d, %Y')}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
-                            padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
-                            border-left: 4px solid #4caf50;'>
-                    <h2 style='color: #2e7d32; margin: 0;'>🏒 Today's Games ({len(todays_games)})</h2>
-                    <p style='color: #2e7d32; margin: 0.5rem 0 0 0;'>{today.strftime('%A, %B %d, %Y')}</p>
-                </div>
-            """, unsafe_allow_html=True)
-            todays_games = todays_games.sort_values('Time')
-            for _, game in todays_games.iterrows():
-                display_game(game, standings, predictions, ml_predictions)
-    
-    elif page == "Custom Matchup":
+    if page == "Standings":
         st.markdown("""
-            <div style='background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); 
-                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
-                        border-left: 4px solid #2196f3;'>
-                <h2 style='color: #1565c0; margin: 0;'>🎯 Custom Matchup Predictor</h2>
-                <p style='color: #1565c0; margin: 0.5rem 0 0 0;'>Select any two teams to see predictions</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        teams = sorted(standings['Team'].tolist())
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("### ✈️ Away Team")
-            away_team = st.selectbox("", ["Select..."] + teams, label_visibility="collapsed", key="away_select")
-        with col2:
-            st.markdown("### 🏠 Home Team")
-            home_team = st.selectbox("", ["Select..."] + teams, label_visibility="collapsed", key="home_select")
-        
-        if st.button("🚀 Generate Prediction", use_container_width=True, type="primary"):
-            if away_team != "Select..." and home_team != "Select..." and away_team != home_team:
-                eastern_now = datetime.now(EASTERN)
-                today = pd.Timestamp(eastern_now.date()).normalize()
-                excel_pred = calculate_excel_prediction(home_team, away_team, standings, None, None)
-                ml_pred = get_ml_prediction(home_team, away_team, today, ml_predictions)
-                
-                # Enhanced prediction display
-                st.markdown("<hr style='margin: 2rem 0;'>", unsafe_allow_html=True)
-                st.markdown(f"### 🏒 {away_team} @ {home_team}", unsafe_allow_html=True)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown('<div class="prediction-box excel-box">', unsafe_allow_html=True)
-                    st.markdown("### 📊 Excel Model", unsafe_allow_html=True)
-                    st.markdown(f'<div class="winner-text">🏆 {excel_pred["winner"]}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="score-text">{away_team} <strong>{excel_pred["away_score"]}</strong> - <strong>{excel_pred["home_score"]}</strong> {home_team}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="confidence-badge">Confidence: {excel_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
-                    if excel_pred['ot_probability'] > 0.25:
-                        st.markdown(f'<div class="metric-label" style="margin-top: 0.5rem;">⏱️ OT Probability: <strong>{excel_pred["ot_probability"]:.1%}</strong></div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown('<div class="prediction-box ml-box">', unsafe_allow_html=True)
-                    st.markdown("### 🤖 ML Model", unsafe_allow_html=True)
-                    if ml_pred:
-                        st.markdown(f'<div class="winner-text">🏆 {ml_pred["winner"]}</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="score-text">{away_team} <strong>{ml_pred["away_score"]}</strong> - <strong>{ml_pred["home_score"]}</strong> {home_team}</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="confidence-badge">Confidence: {ml_pred["confidence"]:.1%}</div>', unsafe_allow_html=True)
-                        if ml_pred['is_overtime']:
-                            st.markdown('<div class="metric-label" style="margin-top: 0.5rem; color: #9c27b0; font-weight: 600;">⏱️ Overtime Predicted</div>', unsafe_allow_html=True)
-                    else:
-                        st.info("🤖 No ML prediction available")
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Agreement indicator
-                if ml_pred:
-                    if excel_pred['winner'] == ml_pred['winner']:
-                        st.markdown('<div class="agreement-indicator agreement-yes">✅ Both models agree on winner: <strong>' + excel_pred['winner'] + '</strong></div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="agreement-indicator agreement-no">⚠️ Models disagree: Excel → {excel_pred["winner"]} | ML → {ml_pred["winner"]}</div>', unsafe_allow_html=True)
-            else:
-                st.error("❌ Please select two different teams")
-    
-    elif page == "Standings":
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
-                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
-                        border-left: 4px solid #4caf50;'>
-                <h2 style='color: #2e7d32; margin: 0;'>🏆 NHL Standings 2025-26</h2>
-                <p style='color: #2e7d32; margin: 0.5rem 0 0 0;'>Current team standings and statistics</p>
+            <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
+                <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>STANDINGS</h2>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>2025-26 Season Team Rankings</p>
             </div>
         """, unsafe_allow_html=True)
         
@@ -697,13 +686,11 @@ def main():
         else:
             st.error("❌ Unable to load standings data")
     
-    elif page == "Player Stats":
+    elif page == "Player Leaderboard":
         st.markdown("""
-            <div style='background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); 
-                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
-                        border-left: 4px solid #ff9800;'>
-                <h2 style='color: #e65100; margin: 0;'>⭐ NHL Player Statistics 2025-26</h2>
-                <p style='color: #e65100; margin: 0.5rem 0 0 0;'>Top player performance metrics</p>
+            <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
+                <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>PLAYER LEADERBOARD</h2>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Top Player Statistics & Performance</p>
             </div>
         """, unsafe_allow_html=True)
         
@@ -768,18 +755,16 @@ def main():
         else:
             st.warning("⚠️ Player stats data not available. Please ensure NHL2025-26PlayerStats.csv exists in the project directory.")
     
-    elif page == "Performance":
+    elif page == "Model Performance":
         st.markdown("""
-            <div style='background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); 
-                        padding: 1.5rem; border-radius: 12px; margin: 1.5rem 0;
-                        border-left: 4px solid #9c27b0;'>
-                <h2 style='color: #7b1fa2; margin: 0;'>📈 Model Performance Analytics</h2>
-                <p style='color: #7b1fa2; margin: 0.5rem 0 0 0;'>Track accuracy and performance metrics</p>
+            <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
+                <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>MODEL PERFORMANCE & COMPARISON</h2>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Track accuracy and compare model predictions</p>
             </div>
         """, unsafe_allow_html=True)
         
-        # Excel performance with enhanced styling
-        st.markdown("### 📊 Excel Model Performance")
+        # Excel performance with DraftKings styling
+        st.markdown("### Excel Model Performance")
         completed = predictions[predictions['Locked Correct'].isin(['YES', 'NO'])].copy()
         if len(completed) > 0:
             total = len(completed)
@@ -790,44 +775,44 @@ def main():
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                    <div class="metric-card" style='border-top-color: #2196f3;'>
-                        <div style='font-size: 2rem; font-weight: 700; color: #2196f3;'>{total}</div>
-                        <div style='color: #666; margin-top: 0.5rem;'>Total Games</div>
+                    <div class="stat-card">
+                        <div class="stat-value">{total}</div>
+                        <div class="stat-label">Total Games</div>
                     </div>
                 """, unsafe_allow_html=True)
             with col2:
                 st.markdown(f"""
-                    <div class="metric-card" style='border-top-color: #4caf50;'>
-                        <div style='font-size: 2rem; font-weight: 700; color: #4caf50;'>{correct}</div>
-                        <div style='color: #666; margin-top: 0.5rem;'>Correct</div>
+                    <div class="stat-card">
+                        <div class="stat-value">{correct}</div>
+                        <div class="stat-label">Correct</div>
                     </div>
                 """, unsafe_allow_html=True)
             with col3:
                 st.markdown(f"""
-                    <div class="metric-card" style='border-top-color: #f44336;'>
-                        <div style='font-size: 2rem; font-weight: 700; color: #f44336;'>{wrong}</div>
-                        <div style='color: #666; margin-top: 0.5rem;'>Incorrect</div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #f85149;">{wrong}</div>
+                        <div class="stat-label">Incorrect</div>
                     </div>
                 """, unsafe_allow_html=True)
             with col4:
                 st.markdown(f"""
-                    <div class="metric-card" style='border-top-color: #ff9800;'>
-                        <div style='font-size: 2rem; font-weight: 700; color: #ff9800;'>{accuracy:.1f}%</div>
-                        <div style='color: #666; margin-top: 0.5rem;'>Accuracy</div>
+                    <div class="stat-card">
+                        <div class="stat-value">{accuracy:.1f}%</div>
+                        <div class="stat-label">Accuracy</div>
                     </div>
                 """, unsafe_allow_html=True)
             
             # Progress bar for accuracy
             st.markdown(f"""
-                <div style='margin-top: 1.5rem;'>
+                <div style='margin-top: 1.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem;'>
                     <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                        <span style='font-weight: 600; color: #333;'>Overall Accuracy</span>
-                        <span style='font-weight: 600; color: #333;'>{accuracy:.1f}%</span>
+                        <span style='font-weight: 600; color: #c9d1d9;'>Overall Accuracy</span>
+                        <span style='font-weight: 600; color: #00d4aa;'>{accuracy:.1f}%</span>
                     </div>
-                    <div style='background: #e0e0e0; border-radius: 10px; height: 30px; overflow: hidden;'>
-                        <div style='background: linear-gradient(90deg, #4caf50 0%, #45a049 100%); 
+                    <div style='background: #21262d; border-radius: 6px; height: 24px; overflow: hidden; border: 1px solid #30363d;'>
+                        <div style='background: #00d4aa; 
                                     height: 100%; width: {accuracy}%; display: flex; align-items: center; 
-                                    justify-content: center; color: white; font-weight: 600;'>
+                                    justify-content: center; color: #0d1117; font-weight: 600; font-size: 0.85rem;'>
                         </div>
                     </div>
                 </div>
@@ -835,10 +820,10 @@ def main():
         else:
             st.info("📊 No completed games yet")
         
-        st.markdown("<hr style='margin: 2rem 0; border: none; border-top: 2px solid #e0e0e0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 2rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
         
-        # ML performance with enhanced styling
-        st.markdown("### 🤖 ML Model Performance")
+        # ML performance with DraftKings styling
+        st.markdown("### ML Model Performance")
         if ml_predictions is not None and len(ml_predictions) > 0:
             ml_completed = ml_predictions[pd.notna(ml_predictions.get('ml_correct', pd.Series()))].copy()
             if len(ml_completed) > 0:
@@ -857,44 +842,44 @@ def main():
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.markdown(f"""
-                            <div class="metric-card" style='border-top-color: #9c27b0;'>
-                                <div style='font-size: 2rem; font-weight: 700; color: #9c27b0;'>{ml_total}</div>
-                                <div style='color: #666; margin-top: 0.5rem;'>Total Games</div>
+                            <div class="stat-card">
+                                <div class="stat-value">{ml_total}</div>
+                                <div class="stat-label">Total Games</div>
                             </div>
                         """, unsafe_allow_html=True)
                     with col2:
                         st.markdown(f"""
-                            <div class="metric-card" style='border-top-color: #4caf50;'>
-                                <div style='font-size: 2rem; font-weight: 700; color: #4caf50;'>{int(ml_correct)}</div>
-                                <div style='color: #666; margin-top: 0.5rem;'>Correct</div>
+                            <div class="stat-card">
+                                <div class="stat-value">{int(ml_correct)}</div>
+                                <div class="stat-label">Correct</div>
                             </div>
                         """, unsafe_allow_html=True)
                     with col3:
                         st.markdown(f"""
-                            <div class="metric-card" style='border-top-color: #f44336;'>
-                                <div style='font-size: 2rem; font-weight: 700; color: #f44336;'>{int(ml_wrong)}</div>
-                                <div style='color: #666; margin-top: 0.5rem;'>Incorrect</div>
+                            <div class="stat-card">
+                                <div class="stat-value" style="color: #f85149;">{int(ml_wrong)}</div>
+                                <div class="stat-label">Incorrect</div>
                             </div>
                         """, unsafe_allow_html=True)
                     with col4:
                         st.markdown(f"""
-                            <div class="metric-card" style='border-top-color: #ff9800;'>
-                                <div style='font-size: 2rem; font-weight: 700; color: #ff9800;'>{ml_accuracy:.1f}%</div>
-                                <div style='color: #666; margin-top: 0.5rem;'>Accuracy</div>
+                            <div class="stat-card">
+                                <div class="stat-value" style="color: #a371f7;">{ml_accuracy:.1f}%</div>
+                                <div class="stat-label">Accuracy</div>
                             </div>
                         """, unsafe_allow_html=True)
                     
                     # Progress bar for ML accuracy
                     st.markdown(f"""
-                        <div style='margin-top: 1.5rem;'>
+                        <div style='margin-top: 1.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem;'>
                             <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                                <span style='font-weight: 600; color: #333;'>ML Model Accuracy</span>
-                                <span style='font-weight: 600; color: #333;'>{ml_accuracy:.1f}%</span>
+                                <span style='font-weight: 600; color: #c9d1d9;'>ML Model Accuracy</span>
+                                <span style='font-weight: 600; color: #a371f7;'>{ml_accuracy:.1f}%</span>
                             </div>
-                            <div style='background: #e0e0e0; border-radius: 10px; height: 30px; overflow: hidden;'>
-                                <div style='background: linear-gradient(90deg, #9c27b0 0%, #7b1fa2 100%); 
+                            <div style='background: #21262d; border-radius: 6px; height: 24px; overflow: hidden; border: 1px solid #30363d;'>
+                                <div style='background: #a371f7; 
                                             height: 100%; width: {ml_accuracy}%; display: flex; align-items: center; 
-                                            justify-content: center; color: white; font-weight: 600;'>
+                                            justify-content: center; color: #ffffff; font-weight: 600; font-size: 0.85rem;'>
                                 </div>
                             </div>
                         </div>
