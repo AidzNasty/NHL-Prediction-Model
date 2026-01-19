@@ -644,8 +644,14 @@ def main():
     
     st.sidebar.markdown("---")
     
-    # Only three tabs as requested
-    page = st.sidebar.radio("", ["Standings", "Player Leaderboard", "Model Performance"], label_visibility="collapsed")
+    # Dropdown menu for navigation
+    st.sidebar.markdown("**Select Page:**")
+    page = st.sidebar.selectbox(
+        "",
+        ["Standings", "Player Leaderboard", "Model Performance"],
+        label_visibility="collapsed",
+        key="page_selector"
+    )
     
     if page == "Standings":
         st.markdown("""
