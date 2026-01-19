@@ -91,10 +91,24 @@ st.markdown("""
     }
     
     /* Selectbox dark theme */
+    .stSelectbox {
+        margin-bottom: 1rem;
+    }
+    
+    .stSelectbox label {
+        color: #c9d1d9 !important;
+        font-weight: 500;
+    }
+    
     .stSelectbox > div > div {
-        background: #161b22;
-        border: 1px solid #30363d;
-        color: #c9d1d9;
+        background: #161b22 !important;
+        border: 1px solid #30363d !important;
+        color: #c9d1d9 !important;
+    }
+    
+    .stSelectbox > div > div > select {
+        background: #161b22 !important;
+        color: #c9d1d9 !important;
     }
     
     /* Dataframe dark theme */
@@ -645,11 +659,13 @@ def main():
     st.sidebar.markdown("---")
     
     # Dropdown menu for navigation
-    st.sidebar.markdown("**Select Page:**")
+    st.sidebar.markdown('<p style="color: #c9d1d9; font-weight: 600; margin-bottom: 0.75rem; font-size: 0.9rem;">SELECT PAGE</p>', unsafe_allow_html=True)
+    
     page = st.sidebar.selectbox(
-        "",
-        ["Standings", "Player Leaderboard", "Model Performance"],
-        label_visibility="collapsed",
+        label="Choose a page",
+        options=["Standings", "Player Leaderboard", "Model Performance"],
+        index=0,
+        label_visibility="visible",
         key="page_selector"
     )
     
