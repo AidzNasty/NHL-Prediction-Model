@@ -645,10 +645,25 @@ def main():
     eastern_now = datetime.now(EASTERN)
     st.caption(f"Last updated: {eastern_now.strftime('%Y-%m-%d %I:%M %p')} ET")
     
-    # Sidebar Navigation
+    # TOP DROPDOWN MENU FOR PAGE NAVIGATION
+    st.markdown("""
+        <div style='background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;'>
+            <p style='color: #c9d1d9; font-weight: 600; margin: 0 0 0.5rem 0; font-size: 0.9rem;'>📊 SELECT PAGE</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    page = st.selectbox(
+        label="Navigate to:",
+        options=["🏒 Today's Games", "📊 Standings", "🏆 Player Leaderboard", "📈 Model Performance"],
+        index=0,
+        label_visibility="collapsed",
+        key="page_selector"
+    )
+    
+    # Sidebar Navigation (Optional - can keep for refresh button)
     st.sidebar.markdown("""
         <div style='background: #161b22; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #30363d;'>
-            <h3 style='color: #ffffff; margin: 0; font-size: 1rem;'>NAVIGATION</h3>
+            <h3 style='color: #ffffff; margin: 0; font-size: 1rem;'>QUICK ACTIONS</h3>
         </div>
     """, unsafe_allow_html=True)
     
@@ -656,20 +671,39 @@ def main():
         st.cache_data.clear()
         st.rerun()
     
-    st.sidebar.markdown("---")
+    # PAGE CONTENT BASED ON SELECTION
+    if page == "🏒 Today's Games":
+        st.markdown("""
+            <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
+                <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>TODAY'S GAMES</h2>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Predictions for upcoming matchups</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Get today's games
+        today = pd.Timestamp.now(tz=EASTERN).normalize()
+        
+        if 'Date' in predictions.columns:
+            todays_games = predictions[predictions['Date'] == today].copy()
+            
+            if len(todays_games) > 0:
+                st.success(f"🏒 {len(todays_games)} games scheduled for today")
+                
+                for idx, game in todays_games.iterrows():
+                    display_game(game, standings, predictions, ml_predictions)
+            else:
+                st.info("📅 No games scheduled for today")
+                
+                # Show upcoming games
+                upcoming = predictions[predictions['Date'] > today].sort_values('Date').head(5)
+                if len(upcoming) > 0:
+                    st.markdown("### 📆 Upcoming Games")
+                    for idx, game in upcoming.iterrows():
+                        display_game(game, standings, predictions, ml_predictions)
+        else:
+            st.error("❌ Date column not found in predictions")
     
-    # Dropdown menu for navigation
-    st.sidebar.markdown('<p style="color: #c9d1d9; font-weight: 600; margin-bottom: 0.75rem; font-size: 0.9rem;">SELECT PAGE</p>', unsafe_allow_html=True)
-    
-    page = st.sidebar.selectbox(
-        label="Choose a page",
-        options=["Standings", "Player Leaderboard", "Model Performance"],
-        index=0,
-        label_visibility="visible",
-        key="page_selector"
-    )
-    
-    if page == "Standings":
+    elif page == "📊 Standings":
         st.markdown("""
             <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
                 <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>STANDINGS</h2>
@@ -708,7 +742,7 @@ def main():
         else:
             st.error("❌ Unable to load standings data")
     
-    elif page == "Player Leaderboard":
+    elif page == "🏆 Player Leaderboard":
         st.markdown("""
             <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
                 <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>PLAYER LEADERBOARD</h2>
@@ -777,7 +811,7 @@ def main():
         else:
             st.warning("⚠️ Player stats data not available. Please ensure NHL2025-26PlayerStats.csv exists in the project directory.")
     
-    elif page == "Model Performance":
+    elif page == "📈 Model Performance":
         st.markdown("""
             <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
                 <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>MODEL PERFORMANCE & COMPARISON</h2>
