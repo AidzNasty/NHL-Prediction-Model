@@ -365,18 +365,27 @@ def load_data():
 
 @st.cache_data(ttl=3600)
 def load_player_stats():
-    """Load player stats from CSV"""
+    """Load player stats from Excel"""
     try:
-        player_stats_file = 'NHL2025-26PlayerStats.csv'
-        # Try to read the CSV file
-        df = pd.read_csv(player_stats_file, sep='~', encoding='utf-8', errors='ignore')
-        # Clean up the data - remove empty rows and columns
-        df = df.dropna(how='all').dropna(axis=1, how='all')
-        # Remove rows that are all empty or just headers
-        df = df[df.iloc[:, 0].notna()]
-        return df
+        # Try to read from Excel file - try common sheet names
+        possible_sheet_names = ['Player Stats', 'PlayerStats', 'Players', 'Stats', 'Skater Stats']
+        
+        for sheet_name in possible_sheet_names:
+            try:
+                df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name)
+                # Clean up the data - remove empty rows and columns
+                df = df.dropna(how='all').dropna(axis=1, how='all')
+                # Remove rows that are all empty or just headers
+                df = df[df.iloc[:, 0].notna()]
+                return df
+            except:
+                continue
+        
+        # If none of the common names work, return None
+        st.sidebar.warning("Player stats sheet not found in Excel file. Tried: " + ", ".join(possible_sheet_names))
+        return None
     except Exception as e:
-        st.sidebar.warning(f"Player stats file not found: {str(e)}")
+        st.sidebar.warning(f"Error loading player stats: {str(e)}")
         return None
 
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
@@ -809,7 +818,7 @@ def main():
             
             st.caption(f"📊 Showing data for {len(player_stats)} players")
         else:
-            st.warning("⚠️ Player stats data not available. Please ensure NHL2025-26PlayerStats.csv exists in the project directory.")
+            st.warning("⚠️ Player stats data not available. Please ensure the Excel file contains a 'Player Stats' sheet.")
     
     elif page == "📈 Model Performance":
         st.markdown("""
