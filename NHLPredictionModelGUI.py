@@ -206,8 +206,16 @@ def load_data():
         valid_cols = [col for col in predictions_data.columns if pd.notna(col)]
         predictions = predictions_data[valid_cols].copy()
         
-        # Normalize dates
-        predictions['Date'] = pd.to_datetime(predictions['Date'], errors='coerce').dt.normalize()
+        # Normalize dates to timezone-naive and filter out invalid dates
+        predictions['Date'] = pd.to_datetime(predictions['Date'], errors='coerce')
+        # Remove timezone if present
+        if hasattr(predictions['Date'].dtype, 'tz') and predictions['Date'].dtype.tz is not None:
+            predictions['Date'] = predictions['Date'].dt.tz_localize(None)
+        # Normalize to date only (no time component)
+        predictions['Date'] = predictions['Date'].dt.normalize()
+        
+        # Filter out rows with NaT (Not a Time) dates to avoid comparison errors
+        predictions = predictions[pd.notna(predictions['Date'])].copy()
         
         # Load standings
         standings = pd.read_excel(EXCEL_FILE, sheet_name='Standings')
@@ -218,7 +226,11 @@ def load_data():
             ml_predictions = pd.read_excel(EXCEL_FILE, sheet_name='ML Prediction Model', header=0)
             
             if 'game_date' in ml_predictions.columns:
-                ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'], errors='coerce').dt.normalize()
+                ml_predictions['date'] = pd.to_datetime(ml_predictions['game_date'], errors='coerce')
+                # Remove timezone if present
+                if hasattr(ml_predictions['date'].dtype, 'tz') and ml_predictions['date'].dtype.tz is not None:
+                    ml_predictions['date'] = ml_predictions['date'].dt.tz_localize(None)
+                ml_predictions['date'] = ml_predictions['date'].dt.normalize()
         except Exception as e:
             st.sidebar.warning(f"ML Model loading failed: {str(e)}")
             ml_predictions = pd.DataFrame()
@@ -578,10 +590,11 @@ def main():
             </div>
         """, unsafe_allow_html=True)
         
-        # Get today's games
-        today = pd.Timestamp.now(tz=EASTERN).normalize()
+        # Get today's games - use timezone-naive date for comparison
+        today = pd.Timestamp.now().normalize()
         
         if 'Date' in predictions.columns:
+            # Get today's games
             todays_games = predictions[predictions['Date'] == today].copy()
             
             if len(todays_games) > 0:
@@ -781,3 +794,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
