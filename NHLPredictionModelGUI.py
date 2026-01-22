@@ -138,8 +138,8 @@ st.markdown("""
         background: #0d1117;
         border: 1px solid #30363d;
         border-radius: 6px;
-        padding: 0.75rem 1rem;
-        margin: 0.5rem 0;
+        padding: 0.75rem;
+        margin: 0.35rem 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -148,19 +148,23 @@ st.markdown("""
     .scorer-name {
         color: #ffffff;
         font-weight: 600;
-        font-size: 0.95rem;
+        font-size: 0.9rem;
+        display: block;
     }
     
     .scorer-team {
         color: #8b949e;
-        font-size: 0.8rem;
-        margin-left: 0.5rem;
+        font-size: 0.75rem;
+        display: block;
+        margin-top: 0.1rem;
     }
     
     .scorer-stat {
         color: #00d4aa;
         font-weight: 700;
-        font-size: 1rem;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        margin-left: 0.5rem;
     }
     
     /* Model Badge */
@@ -272,46 +276,94 @@ def load_data():
 
 @st.cache_data(ttl=3600)
 def load_player_stats():
-    """Load player stats from Excel"""
+    """Load player stats from Excel and calculate per-game averages"""
     try:
         df = pd.read_excel(EXCEL_FILE, sheet_name='NHL2025-26PlayerStats')
         df = df.dropna(how='all').dropna(axis=1, how='all')
+        
+        # Calculate per-game stats
+        if 'GP' in df.columns:
+            if 'G' in df.columns:
+                df['Goals_Per_Game'] = df['G'] / df['GP'].replace(0, 1)
+            if 'A' in df.columns:
+                df['Assists_Per_Game'] = df['A'] / df['GP'].replace(0, 1)
+            if 'PTS' in df.columns:
+                df['Points_Per_Game'] = df['PTS'] / df['GP'].replace(0, 1)
+        
         return df
     except Exception as e:
         st.sidebar.warning(f"Error loading player stats: {str(e)}")
         return None
 
-def get_top_scorers_for_teams(teams, player_stats, stat_type='goals', top_n=5):
-    """Get top probable scorers for specific teams playing today"""
-    if player_stats is None or len(player_stats) == 0:
+def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred):
+    """Calculate scoring probabilities for players based on game matchup"""
+    if player_stats is None or standings is None or len(player_stats) == 0:
         return None
     
-    # Filter players from teams playing today
-    players_today = player_stats[player_stats['Team'].isin(teams)].copy()
-    
-    if len(players_today) == 0:
+    try:
+        # Get team stats
+        home_stats = standings[standings['Team'] == home_team].iloc[0]
+        away_stats = standings[standings['Team'] == away_team].iloc[0]
+        
+        # Get players from both teams
+        home_players = player_stats[player_stats['Team'] == home_team].copy()
+        away_players = player_stats[player_stats['Team'] == away_team].copy()
+        
+        if len(home_players) == 0 and len(away_players) == 0:
+            return None
+        
+        # Expected team goals from predictions
+        if excel_pred:
+            expected_home_goals = excel_pred['home_score']
+            expected_away_goals = excel_pred['away_score']
+        else:
+            expected_home_goals = home_stats['Home Goals per Game']
+            expected_away_goals = away_stats['Away Goals per Game']
+        
+        # Calculate goal probability for each player
+        # Probability = (Player GPG / Team GPG) * Expected Team Goals
+        home_team_gpg = home_stats.get('Home Goals per Game', 3.0)
+        away_team_gpg = away_stats.get('Away Goals per Game', 3.0)
+        
+        # Avoid division by zero
+        if home_team_gpg == 0:
+            home_team_gpg = 3.0
+        if away_team_gpg == 0:
+            away_team_gpg = 3.0
+        
+        player_dfs = []
+        
+        if len(home_players) > 0 and 'Goals_Per_Game' in home_players.columns:
+            home_players['Goal_Probability'] = (home_players['Goals_Per_Game'] / home_team_gpg) * expected_home_goals
+            home_players['Assist_Probability'] = (home_players['Assists_Per_Game'] / (home_team_gpg * 2)) * expected_home_goals * 2
+            home_players['Point_Probability'] = home_players['Goal_Probability'] + home_players['Assist_Probability']
+            player_dfs.append(home_players)
+        
+        if len(away_players) > 0 and 'Goals_Per_Game' in away_players.columns:
+            away_players['Goal_Probability'] = (away_players['Goals_Per_Game'] / away_team_gpg) * expected_away_goals
+            away_players['Assist_Probability'] = (away_players['Assists_Per_Game'] / (away_team_gpg * 2)) * expected_away_goals * 2
+            away_players['Point_Probability'] = away_players['Goal_Probability'] + away_players['Assist_Probability']
+            player_dfs.append(away_players)
+        
+        if len(player_dfs) == 0:
+            return None
+        
+        # Combine players from both teams
+        all_players = pd.concat(player_dfs, ignore_index=True)
+        
+        # Get top scorers
+        top_goals = all_players.nlargest(5, 'Goal_Probability')[['Player', 'Team', 'Pos', 'Goals_Per_Game', 'Goal_Probability']]
+        top_assists = all_players.nlargest(5, 'Assist_Probability')[['Player', 'Team', 'Pos', 'Assists_Per_Game', 'Assist_Probability']]
+        top_points = all_players.nlargest(5, 'Point_Probability')[['Player', 'Team', 'Pos', 'Points_Per_Game', 'Point_Probability']]
+        
+        return {
+            'goals': top_goals,
+            'assists': top_assists,
+            'points': top_points
+        }
+    except Exception as e:
+        st.sidebar.error(f"Error calculating probabilities: {e}")
         return None
-    
-    # Calculate per-game averages
-    players_today['Goals_Per_Game'] = players_today['G'] / players_today['GP']
-    players_today['Assists_Per_Game'] = players_today['A'] / players_today['GP']
-    players_today['Points_Per_Game'] = players_today['PTS'] / players_today['GP']
-    
-    # Sort by the requested stat type
-    if stat_type == 'goals':
-        sorted_players = players_today.sort_values('Goals_Per_Game', ascending=False)
-        stat_col = 'Goals_Per_Game'
-        total_col = 'G'
-    elif stat_type == 'assists':
-        sorted_players = players_today.sort_values('Assists_Per_Game', ascending=False)
-        stat_col = 'Assists_Per_Game'
-        total_col = 'A'
-    else:  # points
-        sorted_players = players_today.sort_values('Points_Per_Game', ascending=False)
-        stat_col = 'Points_Per_Game'
-        total_col = 'PTS'
-    
-    return sorted_players[['Player', 'Team', 'Pos', 'GP', total_col, stat_col]].head(top_n)
 
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
     """Calculate Excel model prediction using HomeIce Differential"""
@@ -458,7 +510,208 @@ def get_ml_prediction(home_team, away_team, game_date, ml_predictions):
         'is_overtime': ml_is_overtime
     }
 
-def display_daily_pick(game_row, standings, predictions, ml_predictions, is_excel=True):
+def display_daily_pick(game_row, standings, predictions, ml_predictions, player_stats=None, is_excel=True):
+    """Display a single game's pick with top scorers"""
+    if is_excel:
+        home_team = game_row['Home']
+        away_team = game_row['Visitor']
+        game_time = game_row['Time']
+        game_date = game_row['Date']
+        
+        excel_pred = calculate_excel_prediction(home_team, away_team, standings, predictions, game_date)
+        ml_pred = get_ml_prediction(home_team, away_team, game_date, ml_predictions)
+    else:
+        # ML row
+        home_team = game_row['home_team']
+        away_team = game_row['away_team']
+        game_time = game_row['game_time']
+        game_date = game_row['date']
+        
+        excel_pred = calculate_excel_prediction(home_team, away_team, standings, predictions, game_date)
+        ml_pred = get_ml_prediction(home_team, away_team, game_date, ml_predictions)
+    
+    if excel_pred is None and ml_pred is None:
+        return
+    
+    # Get team records
+    try:
+        home_row = standings[standings['Team'] == home_team].iloc[0]
+        away_row = standings[standings['Team'] == away_team].iloc[0]
+    except:
+        return
+    
+    st.markdown('<div class="betting-card">', unsafe_allow_html=True)
+    
+    # Game header
+    time_str = str(game_time) if pd.notna(game_time) else "TBD"
+    if ':' not in time_str:
+        time_str = "TBD"
+    st.markdown(f'<div style="color: #8b949e; font-size: 0.85rem; font-weight: 500; margin-bottom: 1rem; text-transform: uppercase;">{time_str} ET</div>', unsafe_allow_html=True)
+    
+    # Teams
+    col1, col2, col3 = st.columns([3, 1, 2])
+    
+    with col1:
+        st.markdown(f'<div style="font-size: 1.2rem; font-weight: 600; color: #ffffff;">{away_team}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size: 0.85rem; color: #8b949e; margin-top: 0.25rem;">{int(away_row["W"])}-{int(away_row["L"])}-{int(away_row["OTL"])} | {int(away_row["PTS"])} PTS</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div style="font-size: 1.5rem; font-weight: 700; color: #ffffff; text-align: center; padding: 0.5rem 0;">@</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f'<div style="font-size: 1.2rem; font-weight: 600; color: #ffffff; text-align: right;">{home_team}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size: 0.85rem; color: #8b949e; margin-top: 0.25rem; text-align: right;">{int(home_row["W"])}-{int(home_row["L"])}-{int(home_row["OTL"])} | {int(home_row["PTS"])} PTS</div>', unsafe_allow_html=True)
+    
+    st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
+    
+    # Excel Prediction
+    if excel_pred:
+        st.markdown('<span class="model-badge badge-excel">EXCEL MODEL</span>', unsafe_allow_html=True)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Pick</div>
+                    <div class='winner-highlight' style='font-size: 1.1rem; margin-top: 0.25rem;'>{excel_pred['winner']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Score</div>
+                    <div style='color: #ffffff; font-size: 1.1rem; margin-top: 0.25rem;'>{excel_pred['away_score']}-{excel_pred['home_score']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>OT Prob</div>
+                    <div style='color: #ffffff; font-size: 1.1rem; margin-top: 0.25rem;'>{excel_pred['ot_probability']:.1%}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Confidence</div>
+                    <div style='color: #00d4aa; font-size: 1.1rem; margin-top: 0.25rem;'>{excel_pred['confidence']:.1%}</div>
+                </div>
+            """, unsafe_allow_html=True)
+    
+    # ML Prediction
+    if ml_pred:
+        st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
+        st.markdown('<span class="model-badge badge-ml">ML MODEL</span>', unsafe_allow_html=True)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Pick</div>
+                    <div class='winner-highlight' style='font-size: 1.1rem; margin-top: 0.25rem;'>{ml_pred['winner']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Score</div>
+                    <div style='color: #ffffff; font-size: 1.1rem; margin-top: 0.25rem;'>{ml_pred['away_score']}-{ml_pred['home_score']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>OT Prob</div>
+                    <div style='color: #ffffff; font-size: 1.1rem; margin-top: 0.25rem;'>{ml_pred['ot_probability']:.1%}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'>
+                    <div style='color: #8b949e; font-size: 0.75rem; text-transform: uppercase;'>Confidence</div>
+                    <div style='color: #a371f7; font-size: 1.1rem; margin-top: 0.25rem;'>{ml_pred['confidence']:.1%}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        # Agreement indicator
+        if excel_pred and excel_pred['winner'] == ml_pred['winner']:
+            st.markdown('<div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #00d4aa; font-weight: 600;">✓ Both Models Agree</div>', unsafe_allow_html=True)
+        elif excel_pred:
+            st.markdown('<div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #ffa500; font-weight: 600;">⚠ Models Disagree</div>', unsafe_allow_html=True)
+    
+    # TOP PROBABLE SCORERS FOR THIS GAME
+    if player_stats is not None:
+        scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred)
+        
+        if scorer_data:
+            st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
+            st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem; text-align: center;">🎯 TOP PROBABLE SCORERS</h3>', unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns(3)
+            
+            # Goals
+            with col1:
+                st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">⚽ Goals</div>', unsafe_allow_html=True)
+                if len(scorer_data['goals']) > 0:
+                    for idx, player in scorer_data['goals'].iterrows():
+                        prob = player['Goal_Probability'] * 100
+                        gpg = player['Goals_Per_Game']
+                        st.markdown(f"""
+                            <div class="scorer-card">
+                                <div style="flex: 1;">
+                                    <div class="scorer-name">{player['Player']}</div>
+                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                </div>
+                                <div class="scorer-stat">{prob:.1f}%</div>
+                            </div>
+                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{gpg:.2f} goals/game</div>
+                        """, unsafe_allow_html=True)
+            
+            # Assists
+            with col2:
+                st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🎯 Assists</div>', unsafe_allow_html=True)
+                if len(scorer_data['assists']) > 0:
+                    for idx, player in scorer_data['assists'].iterrows():
+                        prob = player['Assist_Probability'] * 100
+                        apg = player['Assists_Per_Game']
+                        st.markdown(f"""
+                            <div class="scorer-card">
+                                <div style="flex: 1;">
+                                    <div class="scorer-name">{player['Player']}</div>
+                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                </div>
+                                <div class="scorer-stat">{prob:.1f}%</div>
+                            </div>
+                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{apg:.2f} assists/game</div>
+                        """, unsafe_allow_html=True)
+            
+            # Points
+            with col3:
+                st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🏆 Points</div>', unsafe_allow_html=True)
+                if len(scorer_data['points']) > 0:
+                    for idx, player in scorer_data['points'].iterrows():
+                        prob = player['Point_Probability'] * 100
+                        ppg = player['Points_Per_Game']
+                        st.markdown(f"""
+                            <div class="scorer-card">
+                                <div style="flex: 1;">
+                                    <div class="scorer-name">{player['Player']}</div>
+                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                </div>
+                                <div class="scorer-stat">{prob:.1f}%</div>
+                            </div>
+                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg:.2f} points/game</div>
+                        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
     """Display a single game's pick"""
     if is_excel:
         home_team = game_row['Home']
@@ -597,74 +850,6 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, is_exce
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-def display_top_scorers(teams, player_stats):
-    """Display top probable scorers for today's games"""
-    if player_stats is None or len(teams) == 0:
-        return
-    
-    st.markdown("""
-        <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 2rem 0 1rem 0;'>
-            <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>🎯 TOP PROBABLE SCORERS</h2>
-            <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Based on per-game averages for players in action today</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    # Goals
-    with col1:
-        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">⚽ Goal Scorers</h3>', unsafe_allow_html=True)
-        top_goals = get_top_scorers_for_teams(teams, player_stats, 'goals', 5)
-        if top_goals is not None:
-            for idx, player in top_goals.iterrows():
-                gpg = player['Goals_Per_Game']
-                st.markdown(f"""
-                    <div class="scorer-card">
-                        <div>
-                            <span class="scorer-name">{player['Player']}</span>
-                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
-                        </div>
-                        <div class="scorer-stat">{gpg:.2f}/game</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.caption(f"{int(player['G'])} goals in {int(player['GP'])} games")
-    
-    # Assists
-    with col2:
-        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">🎯 Assist Leaders</h3>', unsafe_allow_html=True)
-        top_assists = get_top_scorers_for_teams(teams, player_stats, 'assists', 5)
-        if top_assists is not None:
-            for idx, player in top_assists.iterrows():
-                apg = player['Assists_Per_Game']
-                st.markdown(f"""
-                    <div class="scorer-card">
-                        <div>
-                            <span class="scorer-name">{player['Player']}</span>
-                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
-                        </div>
-                        <div class="scorer-stat">{apg:.2f}/game</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.caption(f"{int(player['A'])} assists in {int(player['GP'])} games")
-    
-    # Points
-    with col3:
-        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">🏆 Point Leaders</h3>', unsafe_allow_html=True)
-        top_points = get_top_scorers_for_teams(teams, player_stats, 'points', 5)
-        if top_points is not None:
-            for idx, player in top_points.iterrows():
-                ppg = player['Points_Per_Game']
-                st.markdown(f"""
-                    <div class="scorer-card">
-                        <div>
-                            <span class="scorer-name">{player['Player']}</span>
-                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
-                        </div>
-                        <div class="scorer-stat">{ppg:.2f}/game</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.caption(f"{int(player['PTS'])} points in {int(player['GP'])} games")
-
 def main():
     predictions, standings, ml_predictions = load_data()
     
@@ -716,9 +901,12 @@ def main():
         st.markdown("""
             <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0;'>
                 <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>DAILY PICKS</h2>
-                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Today's predictions from both models</p>
+                <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Today's predictions from both models with top probable scorers</p>
             </div>
         """, unsafe_allow_html=True)
+        
+        # Load player stats
+        player_stats = load_player_stats()
         
         # Get today's games - use timezone-naive date for comparison
         today = pd.Timestamp.now().normalize()
@@ -730,20 +918,9 @@ def main():
             if len(todays_games) > 0:
                 st.success(f"🏒 {len(todays_games)} games scheduled for today")
                 
-                # Get teams playing today
-                teams_playing = set()
+                # Display game picks with scorers
                 for idx, game in todays_games.iterrows():
-                    teams_playing.add(game['Home'])
-                    teams_playing.add(game['Visitor'])
-                
-                # Display Top Scorers for today's games
-                player_stats = load_player_stats()
-                if player_stats is not None:
-                    display_top_scorers(list(teams_playing), player_stats)
-                
-                # Display game picks
-                for idx, game in todays_games.iterrows():
-                    display_daily_pick(game, standings, predictions, ml_predictions, is_excel=True)
+                    display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
             else:
                 st.info("📅 No games scheduled for today")
                 
@@ -752,7 +929,7 @@ def main():
                 if len(upcoming) > 0:
                     st.markdown("### 📆 Next Upcoming Games")
                     for idx, game in upcoming.iterrows():
-                        display_daily_pick(game, standings, predictions, ml_predictions, is_excel=True)
+                        display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
         else:
             st.error("❌ Date column not found in predictions")
     
