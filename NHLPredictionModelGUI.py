@@ -296,7 +296,7 @@ def load_player_stats():
         return None
 
 def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred):
-    """Calculate scoring probabilities for players based on game matchup"""
+    """Calculate realistic scoring probabilities for players based on game matchup"""
     if player_stats is None or standings is None or len(player_stats) == 0:
         return None
     
@@ -312,37 +312,72 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         if len(home_players) == 0 and len(away_players) == 0:
             return None
         
-        # Expected team goals from predictions
+        # Expected team goals from predictions (or use team averages)
         if excel_pred:
-            expected_home_goals = excel_pred['home_score']
-            expected_away_goals = excel_pred['away_score']
+            expected_home_goals = float(excel_pred['home_score'])
+            expected_away_goals = float(excel_pred['away_score'])
         else:
-            expected_home_goals = home_stats['Home Goals per Game']
-            expected_away_goals = away_stats['Away Goals per Game']
+            expected_home_goals = float(home_stats.get('Home Goals per Game', 3.0))
+            expected_away_goals = float(away_stats.get('Away Goals per Game', 3.0))
         
-        # Calculate goal probability for each player
-        # Probability = (Player GPG / Team GPG) * Expected Team Goals
-        home_team_gpg = home_stats.get('Home Goals per Game', 3.0)
-        away_team_gpg = away_stats.get('Away Goals per Game', 3.0)
+        # Team goals per game (for calculating player share)
+        home_team_goals_pg = float(home_stats.get('Home Goals per Game', 3.0))
+        away_team_goals_pg = float(away_stats.get('Away Goals per Game', 3.0))
         
         # Avoid division by zero
-        if home_team_gpg == 0:
-            home_team_gpg = 3.0
-        if away_team_gpg == 0:
-            away_team_gpg = 3.0
+        if home_team_goals_pg == 0:
+            home_team_goals_pg = 3.0
+        if away_team_goals_pg == 0:
+            away_team_goals_pg = 3.0
         
         player_dfs = []
         
+        # Calculate for home team players
         if len(home_players) > 0 and 'Goals_Per_Game' in home_players.columns:
-            home_players['Goal_Probability'] = (home_players['Goals_Per_Game'] / home_team_gpg) * expected_home_goals
-            home_players['Assist_Probability'] = (home_players['Assists_Per_Game'] / (home_team_gpg * 2)) * expected_home_goals * 2
-            home_players['Point_Probability'] = home_players['Goal_Probability'] + home_players['Assist_Probability']
+            # Player's share of team goals
+            home_players['Goal_Share'] = home_players['Goals_Per_Game'] / home_team_goals_pg
+            home_players['Assist_Share'] = home_players['Assists_Per_Game'] / (home_team_goals_pg * 2)  # ~2 assists per goal
+            
+            # Expected player production in this game
+            home_players['Expected_Goals'] = home_players['Goal_Share'] * expected_home_goals
+            home_players['Expected_Assists'] = home_players['Assist_Share'] * expected_home_goals * 2
+            
+            # Convert to realistic probability using Poisson approximation
+            # P(at least 1) = 1 - P(0) = 1 - e^(-lambda)
+            # But we'll use a simpler cap approach for interpretability
+            home_players['Goal_Probability'] = home_players['Expected_Goals'].apply(
+                lambda x: min(x * 0.6, 0.55)  # Cap at 55%
+            )
+            home_players['Assist_Probability'] = home_players['Expected_Assists'].apply(
+                lambda x: min(x * 0.45, 0.50)  # Cap at 50%
+            )
+            home_players['Point_Probability'] = (
+                home_players['Goal_Probability'] + home_players['Assist_Probability']
+            ).apply(lambda x: min(x, 0.70))  # Cap at 70%
+            
             player_dfs.append(home_players)
         
+        # Calculate for away team players
         if len(away_players) > 0 and 'Goals_Per_Game' in away_players.columns:
-            away_players['Goal_Probability'] = (away_players['Goals_Per_Game'] / away_team_gpg) * expected_away_goals
-            away_players['Assist_Probability'] = (away_players['Assists_Per_Game'] / (away_team_gpg * 2)) * expected_away_goals * 2
-            away_players['Point_Probability'] = away_players['Goal_Probability'] + away_players['Assist_Probability']
+            # Player's share of team goals
+            away_players['Goal_Share'] = away_players['Goals_Per_Game'] / away_team_goals_pg
+            away_players['Assist_Share'] = away_players['Assists_Per_Game'] / (away_team_goals_pg * 2)
+            
+            # Expected player production in this game
+            away_players['Expected_Goals'] = away_players['Goal_Share'] * expected_away_goals
+            away_players['Expected_Assists'] = away_players['Assist_Share'] * expected_away_goals * 2
+            
+            # Convert to realistic probability
+            away_players['Goal_Probability'] = away_players['Expected_Goals'].apply(
+                lambda x: min(x * 0.6, 0.55)
+            )
+            away_players['Assist_Probability'] = away_players['Expected_Assists'].apply(
+                lambda x: min(x * 0.45, 0.50)
+            )
+            away_players['Point_Probability'] = (
+                away_players['Goal_Probability'] + away_players['Assist_Probability']
+            ).apply(lambda x: min(x, 0.70))
+            
             player_dfs.append(away_players)
         
         if len(player_dfs) == 0:
@@ -351,10 +386,10 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         # Combine players from both teams
         all_players = pd.concat(player_dfs, ignore_index=True)
         
-        # Get top scorers
-        top_goals = all_players.nlargest(5, 'Goal_Probability')[['Player', 'Team', 'Pos', 'Goals_Per_Game', 'Goal_Probability']]
-        top_assists = all_players.nlargest(5, 'Assist_Probability')[['Player', 'Team', 'Pos', 'Assists_Per_Game', 'Assist_Probability']]
-        top_points = all_players.nlargest(5, 'Point_Probability')[['Player', 'Team', 'Pos', 'Points_Per_Game', 'Point_Probability']]
+        # Get top 5 for each category
+        top_goals = all_players.nlargest(5, 'Goal_Probability')[['Player', 'Team', 'Pos', 'Goals_Per_Game', 'Goal_Probability']].copy()
+        top_assists = all_players.nlargest(5, 'Assist_Probability')[['Player', 'Team', 'Pos', 'Assists_Per_Game', 'Assist_Probability']].copy()
+        top_points = all_players.nlargest(5, 'Point_Probability')[['Player', 'Team', 'Pos', 'Points_Per_Game', 'Point_Probability']].copy()
         
         return {
             'goals': top_goals,
@@ -363,6 +398,8 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         }
     except Exception as e:
         st.sidebar.error(f"Error calculating probabilities: {e}")
+        import traceback
+        st.sidebar.caption(traceback.format_exc())
         return None
 
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
@@ -648,10 +685,10 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
             st.markdown('<div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #ffa500; font-weight: 600;">⚠ Models Disagree</div>', unsafe_allow_html=True)
     
     # TOP PROBABLE SCORERS FOR THIS GAME
-    if player_stats is not None:
+    if player_stats is not None and excel_pred is not None:
         scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred)
         
-        if scorer_data:
+        if scorer_data and all(len(scorer_data[k]) > 0 for k in ['goals', 'assists', 'points']):
             st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
             st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem; text-align: center;">🎯 TOP PROBABLE SCORERS</h3>', unsafe_allow_html=True)
             
@@ -660,56 +697,53 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
             # Goals
             with col1:
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">⚽ Goals</div>', unsafe_allow_html=True)
-                if len(scorer_data['goals']) > 0:
-                    for idx, player in scorer_data['goals'].iterrows():
-                        prob = player['Goal_Probability'] * 100
-                        gpg = player['Goals_Per_Game']
-                        st.markdown(f"""
-                            <div class="scorer-card">
-                                <div style="flex: 1;">
-                                    <div class="scorer-name">{player['Player']}</div>
-                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
-                                </div>
-                                <div class="scorer-stat">{prob:.1f}%</div>
+                for idx, player in scorer_data['goals'].iterrows():
+                    prob = player['Goal_Probability'] * 100
+                    gpg = player['Goals_Per_Game']
+                    st.markdown(f"""
+                        <div class="scorer-card">
+                            <div style="flex: 1;">
+                                <div class="scorer-name">{player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
                             </div>
-                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{gpg:.2f} goals/game</div>
-                        """, unsafe_allow_html=True)
+                            <div class="scorer-stat">{prob:.1f}%</div>
+                        </div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{gpg:.2f} goals/game</div>
+                    """, unsafe_allow_html=True)
             
             # Assists
             with col2:
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🎯 Assists</div>', unsafe_allow_html=True)
-                if len(scorer_data['assists']) > 0:
-                    for idx, player in scorer_data['assists'].iterrows():
-                        prob = player['Assist_Probability'] * 100
-                        apg = player['Assists_Per_Game']
-                        st.markdown(f"""
-                            <div class="scorer-card">
-                                <div style="flex: 1;">
-                                    <div class="scorer-name">{player['Player']}</div>
-                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
-                                </div>
-                                <div class="scorer-stat">{prob:.1f}%</div>
+                for idx, player in scorer_data['assists'].iterrows():
+                    prob = player['Assist_Probability'] * 100
+                    apg = player['Assists_Per_Game']
+                    st.markdown(f"""
+                        <div class="scorer-card">
+                            <div style="flex: 1;">
+                                <div class="scorer-name">{player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
                             </div>
-                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{apg:.2f} assists/game</div>
-                        """, unsafe_allow_html=True)
+                            <div class="scorer-stat">{prob:.1f}%</div>
+                        </div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{apg:.2f} assists/game</div>
+                    """, unsafe_allow_html=True)
             
             # Points
             with col3:
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🏆 Points</div>', unsafe_allow_html=True)
-                if len(scorer_data['points']) > 0:
-                    for idx, player in scorer_data['points'].iterrows():
-                        prob = player['Point_Probability'] * 100
-                        ppg = player['Points_Per_Game']
-                        st.markdown(f"""
-                            <div class="scorer-card">
-                                <div style="flex: 1;">
-                                    <div class="scorer-name">{player['Player']}</div>
-                                    <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
-                                </div>
-                                <div class="scorer-stat">{prob:.1f}%</div>
+                for idx, player in scorer_data['points'].iterrows():
+                    prob = player['Point_Probability'] * 100
+                    ppg = player['Points_Per_Game']
+                    st.markdown(f"""
+                        <div class="scorer-card">
+                            <div style="flex: 1;">
+                                <div class="scorer-name">{player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
                             </div>
-                            <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg:.2f} points/game</div>
-                        """, unsafe_allow_html=True)
+                            <div class="scorer-stat">{prob:.1f}%</div>
+                        </div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg:.2f} points/game</div>
+                    """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
     """Display a single game's pick"""
@@ -908,12 +942,26 @@ def main():
         # Load player stats
         player_stats = load_player_stats()
         
+        if player_stats is not None:
+            st.sidebar.info(f"✅ Loaded {len(player_stats)} players")
+            required_cols = ['Goals_Per_Game', 'Assists_Per_Game', 'Points_Per_Game']
+            missing = [col for col in required_cols if col not in player_stats.columns]
+            if missing:
+                st.sidebar.warning(f"Missing columns: {missing}")
+            else:
+                st.sidebar.success(f"✅ All required columns present")
+        else:
+            st.sidebar.error("❌ Failed to load player stats")
+        
         # Get today's games - use timezone-naive date for comparison
         today = pd.Timestamp.now().normalize()
         
         if 'Date' in predictions.columns:
             # Get today's games
             todays_games = predictions[predictions['Date'] == today].copy()
+            
+            # Remove any duplicate games
+            todays_games = todays_games.drop_duplicates(subset=['Home', 'Visitor', 'Date'], keep='first')
             
             if len(todays_games) > 0:
                 st.success(f"🏒 {len(todays_games)} games scheduled for today")
@@ -926,6 +974,8 @@ def main():
                 
                 # Show upcoming games
                 upcoming = predictions[predictions['Date'] > today].sort_values('Date').head(5)
+                upcoming = upcoming.drop_duplicates(subset=['Home', 'Visitor', 'Date'], keep='first')
+                
                 if len(upcoming) > 0:
                     st.markdown("### 📆 Next Upcoming Games")
                     for idx, game in upcoming.iterrows():
