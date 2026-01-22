@@ -215,6 +215,17 @@ st.markdown("""
         margin-top: 0.5rem;
     }
     
+    /* Reliability Badge Styles */
+    .reliability-high {
+        color: #00d4aa;
+        font-weight: 600;
+    }
+    
+    .reliability-moderate {
+        color: #ffc107;
+        font-weight: 600;
+    }
+    
     </style>
 """, unsafe_allow_html=True)
 
@@ -336,8 +347,31 @@ def load_player_stats():
         st.sidebar.warning(f"Error loading player stats: {str(e)}")
         return None
 
-def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, debug=False):
-    """Calculate realistic scoring probabilities for players based on game matchup"""
+
+def get_reliability_badge(gp):
+    """Return reliability badge based on games played
+    🟢 = 40+ games (High confidence)
+    🟡 = 15-39 games (Moderate confidence)
+    """
+    if gp >= 40:
+        return "🟢"  # High confidence
+    else:  # 15-39 (we filter out <15)
+        return "🟡"  # Moderate confidence
+
+
+def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, min_gp=15, debug=False):
+    """
+    Calculate realistic scoring probabilities for players based on game matchup
+    
+    Args:
+        home_team: Home team name
+        away_team: Away team name  
+        standings: Standings DataFrame
+        player_stats: Player statistics DataFrame
+        excel_pred: Excel prediction dict with 'home_score' and 'away_score'
+        min_gp: Minimum games played threshold (default 15)
+        debug: Enable debug output
+    """
     if player_stats is None or standings is None or len(player_stats) == 0:
         if debug:
             st.sidebar.warning("⚠️ Missing player_stats or standings")
@@ -348,17 +382,24 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         home_stats = standings[standings['Team'] == home_team].iloc[0]
         away_stats = standings[standings['Team'] == away_team].iloc[0]
         
-        # Get players from both teams
-        home_players = player_stats[player_stats['Team'] == home_team].copy()
-        away_players = player_stats[player_stats['Team'] == away_team].copy()
+        # Filter players by minimum games played - THIS IS THE KEY FILTER
+        home_players = player_stats[
+            (player_stats['Team'] == home_team) & 
+            (player_stats['GP'] >= min_gp)
+        ].copy()
+        
+        away_players = player_stats[
+            (player_stats['Team'] == away_team) & 
+            (player_stats['GP'] >= min_gp)
+        ].copy()
         
         if debug:
-            st.sidebar.caption(f"🏠 {home_team}: {len(home_players)} players")
-            st.sidebar.caption(f"✈️ {away_team}: {len(away_players)} players")
+            st.sidebar.caption(f"🏠 {home_team}: {len(home_players)} players (≥{min_gp} GP)")
+            st.sidebar.caption(f"✈️ {away_team}: {len(away_players)} players (≥{min_gp} GP)")
         
         if len(home_players) == 0 and len(away_players) == 0:
             if debug:
-                st.sidebar.error(f"❌ No players found for either team!")
+                st.sidebar.error(f"❌ No players with ≥{min_gp} GP found for either team!")
             return None
         
         # Expected team goals from predictions (or use team averages)
@@ -391,9 +432,7 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
             home_players['Expected_Goals'] = home_players['Goal_Share'] * expected_home_goals
             home_players['Expected_Assists'] = home_players['Assist_Share'] * expected_home_goals * 2
             
-            # Convert to realistic probability using Poisson approximation
-            # P(at least 1) = 1 - P(0) = 1 - e^(-lambda)
-            # But we'll use a simpler cap approach for interpretability
+            # Convert to realistic probability (capped for realism)
             home_players['Goal_Probability'] = home_players['Expected_Goals'].apply(
                 lambda x: min(x * 0.6, 0.55)  # Cap at 55%
             )
@@ -403,6 +442,9 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
             home_players['Point_Probability'] = (
                 home_players['Goal_Probability'] + home_players['Assist_Probability']
             ).apply(lambda x: min(x, 0.70))  # Cap at 70%
+            
+            # Add reliability badge based on GP
+            home_players['Reliability'] = home_players['GP'].apply(get_reliability_badge)
             
             player_dfs.append(home_players)
         
@@ -427,6 +469,9 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
                 away_players['Goal_Probability'] + away_players['Assist_Probability']
             ).apply(lambda x: min(x, 0.70))
             
+            # Add reliability badge based on GP
+            away_players['Reliability'] = away_players['GP'].apply(get_reliability_badge)
+            
             player_dfs.append(away_players)
         
         if len(player_dfs) == 0:
@@ -435,10 +480,18 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         # Combine players from both teams
         all_players = pd.concat(player_dfs, ignore_index=True)
         
-        # Get top 5 for each category
-        top_goals = all_players.nlargest(5, 'Goal_Probability')[['Player', 'Team', 'Pos', 'Goals_Per_Game', 'Goal_Probability']].copy()
-        top_assists = all_players.nlargest(5, 'Assist_Probability')[['Player', 'Team', 'Pos', 'Assists_Per_Game', 'Assist_Probability']].copy()
-        top_points = all_players.nlargest(5, 'Point_Probability')[['Player', 'Team', 'Pos', 'Points_Per_Game', 'Point_Probability']].copy()
+        # Get top 5 for each category - NOW INCLUDING GP AND RELIABILITY
+        top_goals = all_players.nlargest(5, 'Goal_Probability')[
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Goals_Per_Game', 'Goal_Probability']
+        ].copy()
+        
+        top_assists = all_players.nlargest(5, 'Assist_Probability')[
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Assists_Per_Game', 'Assist_Probability']
+        ].copy()
+        
+        top_points = all_players.nlargest(5, 'Point_Probability')[
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Points_Per_Game', 'Point_Probability']
+        ].copy()
         
         return {
             'goals': top_goals,
@@ -736,7 +789,7 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
     if player_stats is not None and excel_pred is not None:
         # Enable debug for first game only
         debug_mode = (home_team == "Boston Bruins" or away_team == "Boston Bruins")
-        scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, debug=debug_mode)
+        scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, min_gp=15, debug=debug_mode)
         
         if scorer_data and all(len(scorer_data[k]) > 0 for k in ['goals', 'assists', 'points']):
             st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
@@ -750,11 +803,13 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 for idx, player in scorer_data['goals'].iterrows():
                     prob = player['Goal_Probability'] * 100
                     gpg = player['Goals_Per_Game']
+                    gp = int(player['GP'])
+                    badge = player['Reliability']
                     st.markdown(f"""
                         <div class="scorer-card">
                             <div style="flex: 1;">
-                                <div class="scorer-name">{player['Player']}</div>
-                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                <div class="scorer-name">{badge} {player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']} • ({gp} GP)</div>
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
@@ -767,11 +822,13 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 for idx, player in scorer_data['assists'].iterrows():
                     prob = player['Assist_Probability'] * 100
                     apg = player['Assists_Per_Game']
+                    gp = int(player['GP'])
+                    badge = player['Reliability']
                     st.markdown(f"""
                         <div class="scorer-card">
                             <div style="flex: 1;">
-                                <div class="scorer-name">{player['Player']}</div>
-                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                <div class="scorer-name">{badge} {player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']} • ({gp} GP)</div>
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
@@ -784,16 +841,25 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 for idx, player in scorer_data['points'].iterrows():
                     prob = player['Point_Probability'] * 100
                     ppg = player['Points_Per_Game']
+                    gp = int(player['GP'])
+                    badge = player['Reliability']
                     st.markdown(f"""
                         <div class="scorer-card">
                             <div style="flex: 1;">
-                                <div class="scorer-name">{player['Player']}</div>
-                                <div class="scorer-team">{player['Team']} • {player['Pos']}</div>
+                                <div class="scorer-name">{badge} {player['Player']}</div>
+                                <div class="scorer-team">{player['Team']} • {player['Pos']} • ({gp} GP)</div>
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
                         <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg:.2f} points/game</div>
                     """, unsafe_allow_html=True)
+            
+            # Legend for reliability badges
+            st.markdown("""
+                <div style="text-align: center; margin-top: 1rem; padding: 0.5rem; background: #0d1117; border-radius: 4px; color: #8b949e; font-size: 0.75rem;">
+                    🟢 High confidence (40+ GP) | 🟡 Moderate confidence (15-39 GP)
+                </div>
+            """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -858,6 +924,12 @@ def main():
         if player_stats is not None:
             st.sidebar.info(f"✅ Loaded {len(player_stats)} players")
             st.sidebar.caption(f"Teams: {len(player_stats['Team'].unique())} unique teams")
+            
+            # Show how many players pass the GP filter
+            if 'GP' in player_stats.columns:
+                players_above_15 = len(player_stats[player_stats['GP'] >= 15])
+                st.sidebar.caption(f"Players with ≥15 GP: {players_above_15}")
+            
             required_cols = ['Goals_Per_Game', 'Assists_Per_Game', 'Points_Per_Game']
             missing = [col for col in required_cols if col not in player_stats.columns]
             if missing:
