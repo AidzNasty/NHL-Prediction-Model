@@ -359,6 +359,39 @@ def get_reliability_badge(gp):
         return "🟡"  # Moderate confidence
 
 
+def apply_bayesian_regression(player_df, stat_col, gp_col='GP', stabilization_point=20, league_avg=None):
+    """
+    Apply Bayesian regression to adjust stats based on sample size.
+    
+    Formula: Adjusted = (Player_Total + League_Avg × Weight) / (Player_GP + Weight)
+    
+    Players with fewer games regress more toward league average.
+    Players with many games stay close to their actual rate.
+    
+    Args:
+        player_df: DataFrame with player stats
+        stat_col: Column name for the per-game stat (e.g., 'Goals_Per_Game')
+        gp_col: Column name for games played
+        stabilization_point: Number of games where stat becomes reliable (default 20)
+        league_avg: League average for the stat (calculated if not provided)
+    
+    Returns:
+        Series with adjusted per-game stats
+    """
+    if league_avg is None:
+        # Calculate league average weighted by GP
+        total_stat = (player_df[stat_col] * player_df[gp_col]).sum()
+        total_gp = player_df[gp_col].sum()
+        league_avg = total_stat / total_gp if total_gp > 0 else player_df[stat_col].mean()
+    
+    # Bayesian regression formula
+    # Adjusted = (Player_Total + League_Avg × Stabilization) / (GP + Stabilization)
+    player_total = player_df[stat_col] * player_df[gp_col]  # Convert rate back to total
+    adjusted = (player_total + (league_avg * stabilization_point)) / (player_df[gp_col] + stabilization_point)
+    
+    return adjusted
+
+
 def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, min_gp=15, debug=False):
     """
     Calculate realistic scoring probabilities for players based on game matchup
@@ -402,6 +435,50 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
                 st.sidebar.error(f"❌ No players with ≥{min_gp} GP found for either team!")
             return None
         
+        # Calculate league averages for Bayesian regression
+        # These are approximate NHL averages - can be replaced with priors later
+        league_avg_gpg = 0.30   # ~25 goals per 82 games
+        league_avg_apg = 0.45   # ~37 assists per 82 games
+        league_avg_ppg = 0.75   # ~62 points per 82 games
+        
+        # Stabilization points (games needed for stat to be reliable)
+        goals_stabilization = 20
+        assists_stabilization = 25
+        points_stabilization = 20
+        
+        if debug:
+            st.sidebar.caption(f"📊 Using Bayesian regression (stabilization: G={goals_stabilization}, A={assists_stabilization})")
+        
+        # Apply Bayesian regression to home players
+        if len(home_players) > 0 and 'Goals_Per_Game' in home_players.columns:
+            home_players['Adj_Goals_Per_Game'] = apply_bayesian_regression(
+                home_players, 'Goals_Per_Game', 'GP', 
+                stabilization_point=goals_stabilization, league_avg=league_avg_gpg
+            )
+            home_players['Adj_Assists_Per_Game'] = apply_bayesian_regression(
+                home_players, 'Assists_Per_Game', 'GP',
+                stabilization_point=assists_stabilization, league_avg=league_avg_apg
+            )
+            home_players['Adj_Points_Per_Game'] = apply_bayesian_regression(
+                home_players, 'Points_Per_Game', 'GP',
+                stabilization_point=points_stabilization, league_avg=league_avg_ppg
+            )
+        
+        # Apply Bayesian regression to away players
+        if len(away_players) > 0 and 'Goals_Per_Game' in away_players.columns:
+            away_players['Adj_Goals_Per_Game'] = apply_bayesian_regression(
+                away_players, 'Goals_Per_Game', 'GP',
+                stabilization_point=goals_stabilization, league_avg=league_avg_gpg
+            )
+            away_players['Adj_Assists_Per_Game'] = apply_bayesian_regression(
+                away_players, 'Assists_Per_Game', 'GP',
+                stabilization_point=assists_stabilization, league_avg=league_avg_apg
+            )
+            away_players['Adj_Points_Per_Game'] = apply_bayesian_regression(
+                away_players, 'Points_Per_Game', 'GP',
+                stabilization_point=points_stabilization, league_avg=league_avg_ppg
+            )
+        
         # Expected team goals from predictions (or use team averages)
         if excel_pred:
             expected_home_goals = float(excel_pred['home_score'])
@@ -423,10 +500,10 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         player_dfs = []
         
         # Calculate for home team players
-        if len(home_players) > 0 and 'Goals_Per_Game' in home_players.columns:
-            # Player's share of team goals
-            home_players['Goal_Share'] = home_players['Goals_Per_Game'] / home_team_goals_pg
-            home_players['Assist_Share'] = home_players['Assists_Per_Game'] / (home_team_goals_pg * 2)  # ~2 assists per goal
+        if len(home_players) > 0 and 'Adj_Goals_Per_Game' in home_players.columns:
+            # Player's share of team goals (using ADJUSTED per-game stats)
+            home_players['Goal_Share'] = home_players['Adj_Goals_Per_Game'] / home_team_goals_pg
+            home_players['Assist_Share'] = home_players['Adj_Assists_Per_Game'] / (home_team_goals_pg * 2)  # ~2 assists per goal
             
             # Expected player production in this game
             home_players['Expected_Goals'] = home_players['Goal_Share'] * expected_home_goals
@@ -449,10 +526,10 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
             player_dfs.append(home_players)
         
         # Calculate for away team players
-        if len(away_players) > 0 and 'Goals_Per_Game' in away_players.columns:
-            # Player's share of team goals
-            away_players['Goal_Share'] = away_players['Goals_Per_Game'] / away_team_goals_pg
-            away_players['Assist_Share'] = away_players['Assists_Per_Game'] / (away_team_goals_pg * 2)
+        if len(away_players) > 0 and 'Adj_Goals_Per_Game' in away_players.columns:
+            # Player's share of team goals (using ADJUSTED per-game stats)
+            away_players['Goal_Share'] = away_players['Adj_Goals_Per_Game'] / away_team_goals_pg
+            away_players['Assist_Share'] = away_players['Adj_Assists_Per_Game'] / (away_team_goals_pg * 2)
             
             # Expected player production in this game
             away_players['Expected_Goals'] = away_players['Goal_Share'] * expected_away_goals
@@ -480,17 +557,17 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         # Combine players from both teams
         all_players = pd.concat(player_dfs, ignore_index=True)
         
-        # Get top 5 for each category - NOW INCLUDING GP AND RELIABILITY
+        # Get top 5 for each category - INCLUDING GP, RELIABILITY, RAW AND ADJUSTED STATS
         top_goals = all_players.nlargest(5, 'Goal_Probability')[
-            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Goals_Per_Game', 'Goal_Probability']
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Goals_Per_Game', 'Adj_Goals_Per_Game', 'Goal_Probability']
         ].copy()
         
         top_assists = all_players.nlargest(5, 'Assist_Probability')[
-            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Assists_Per_Game', 'Assist_Probability']
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Assists_Per_Game', 'Adj_Assists_Per_Game', 'Assist_Probability']
         ].copy()
         
         top_points = all_players.nlargest(5, 'Point_Probability')[
-            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Points_Per_Game', 'Point_Probability']
+            ['Player', 'Team', 'Pos', 'GP', 'Reliability', 'Points_Per_Game', 'Adj_Points_Per_Game', 'Point_Probability']
         ].copy()
         
         return {
@@ -802,7 +879,8 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">⚽ Goals</div>', unsafe_allow_html=True)
                 for idx, player in scorer_data['goals'].iterrows():
                     prob = player['Goal_Probability'] * 100
-                    gpg = player['Goals_Per_Game']
+                    gpg_raw = player['Goals_Per_Game']
+                    gpg_adj = player['Adj_Goals_Per_Game']
                     gp = int(player['GP'])
                     badge = player['Reliability']
                     st.markdown(f"""
@@ -813,7 +891,7 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
-                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{gpg:.2f} goals/game</div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{gpg_raw:.2f} → {gpg_adj:.2f} adj g/gm</div>
                     """, unsafe_allow_html=True)
             
             # Assists
@@ -821,7 +899,8 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🎯 Assists</div>', unsafe_allow_html=True)
                 for idx, player in scorer_data['assists'].iterrows():
                     prob = player['Assist_Probability'] * 100
-                    apg = player['Assists_Per_Game']
+                    apg_raw = player['Assists_Per_Game']
+                    apg_adj = player['Adj_Assists_Per_Game']
                     gp = int(player['GP'])
                     badge = player['Reliability']
                     st.markdown(f"""
@@ -832,7 +911,7 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
-                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{apg:.2f} assists/game</div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{apg_raw:.2f} → {apg_adj:.2f} adj a/gm</div>
                     """, unsafe_allow_html=True)
             
             # Points
@@ -840,7 +919,8 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                 st.markdown('<div style="color: #8b949e; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase;">🏆 Points</div>', unsafe_allow_html=True)
                 for idx, player in scorer_data['points'].iterrows():
                     prob = player['Point_Probability'] * 100
-                    ppg = player['Points_Per_Game']
+                    ppg_raw = player['Points_Per_Game']
+                    ppg_adj = player['Adj_Points_Per_Game']
                     gp = int(player['GP'])
                     badge = player['Reliability']
                     st.markdown(f"""
@@ -851,7 +931,7 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
                             </div>
                             <div class="scorer-stat">{prob:.1f}%</div>
                         </div>
-                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg:.2f} points/game</div>
+                        <div style="color: #8b949e; font-size: 0.7rem; margin: -0.25rem 0 0.5rem 0.75rem;">{ppg_raw:.2f} → {ppg_adj:.2f} adj p/gm</div>
                     """, unsafe_allow_html=True)
             
             # Legend for reliability badges
