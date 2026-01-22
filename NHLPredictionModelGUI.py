@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NHL Prediction Model - Web App
-Displays Excel and ML predictions side by side
+NHL Prediction Model - Web App with Top Scorers
+Displays Excel and ML predictions side by side + probable scorers
 """
 
 import streamlit as st
@@ -133,6 +133,36 @@ st.markdown("""
         box-shadow: 0 0 0 1px #00d4aa;
     }
     
+    /* Scorer Card Style */
+    .scorer-card {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin: 0.5rem 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .scorer-name {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    
+    .scorer-team {
+        color: #8b949e;
+        font-size: 0.8rem;
+        margin-left: 0.5rem;
+    }
+    
+    .scorer-stat {
+        color: #00d4aa;
+        font-weight: 700;
+        font-size: 1rem;
+    }
+    
     /* Model Badge */
     .model-badge {
         display: inline-block;
@@ -250,6 +280,38 @@ def load_player_stats():
     except Exception as e:
         st.sidebar.warning(f"Error loading player stats: {str(e)}")
         return None
+
+def get_top_scorers_for_teams(teams, player_stats, stat_type='goals', top_n=5):
+    """Get top probable scorers for specific teams playing today"""
+    if player_stats is None or len(player_stats) == 0:
+        return None
+    
+    # Filter players from teams playing today
+    players_today = player_stats[player_stats['Team'].isin(teams)].copy()
+    
+    if len(players_today) == 0:
+        return None
+    
+    # Calculate per-game averages
+    players_today['Goals_Per_Game'] = players_today['G'] / players_today['GP']
+    players_today['Assists_Per_Game'] = players_today['A'] / players_today['GP']
+    players_today['Points_Per_Game'] = players_today['PTS'] / players_today['GP']
+    
+    # Sort by the requested stat type
+    if stat_type == 'goals':
+        sorted_players = players_today.sort_values('Goals_Per_Game', ascending=False)
+        stat_col = 'Goals_Per_Game'
+        total_col = 'G'
+    elif stat_type == 'assists':
+        sorted_players = players_today.sort_values('Assists_Per_Game', ascending=False)
+        stat_col = 'Assists_Per_Game'
+        total_col = 'A'
+    else:  # points
+        sorted_players = players_today.sort_values('Points_Per_Game', ascending=False)
+        stat_col = 'Points_Per_Game'
+        total_col = 'PTS'
+    
+    return sorted_players[['Player', 'Team', 'Pos', 'GP', total_col, stat_col]].head(top_n)
 
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
     """Calculate Excel model prediction using HomeIce Differential"""
@@ -535,6 +597,74 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, is_exce
     
     st.markdown('</div>', unsafe_allow_html=True)
 
+def display_top_scorers(teams, player_stats):
+    """Display top probable scorers for today's games"""
+    if player_stats is None or len(teams) == 0:
+        return
+    
+    st.markdown("""
+        <div style='background: #161b22; border: 1px solid #30363d; padding: 1.5rem; border-radius: 8px; margin: 2rem 0 1rem 0;'>
+            <h2 style='color: #ffffff; margin: 0; font-size: 1.5rem;'>🎯 TOP PROBABLE SCORERS</h2>
+            <p style='color: #8b949e; margin: 0.5rem 0 0 0; font-size: 0.9rem;'>Based on per-game averages for players in action today</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    # Goals
+    with col1:
+        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">⚽ Goal Scorers</h3>', unsafe_allow_html=True)
+        top_goals = get_top_scorers_for_teams(teams, player_stats, 'goals', 5)
+        if top_goals is not None:
+            for idx, player in top_goals.iterrows():
+                gpg = player['Goals_Per_Game']
+                st.markdown(f"""
+                    <div class="scorer-card">
+                        <div>
+                            <span class="scorer-name">{player['Player']}</span>
+                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
+                        </div>
+                        <div class="scorer-stat">{gpg:.2f}/game</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{int(player['G'])} goals in {int(player['GP'])} games")
+    
+    # Assists
+    with col2:
+        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">🎯 Assist Leaders</h3>', unsafe_allow_html=True)
+        top_assists = get_top_scorers_for_teams(teams, player_stats, 'assists', 5)
+        if top_assists is not None:
+            for idx, player in top_assists.iterrows():
+                apg = player['Assists_Per_Game']
+                st.markdown(f"""
+                    <div class="scorer-card">
+                        <div>
+                            <span class="scorer-name">{player['Player']}</span>
+                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
+                        </div>
+                        <div class="scorer-stat">{apg:.2f}/game</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{int(player['A'])} assists in {int(player['GP'])} games")
+    
+    # Points
+    with col3:
+        st.markdown('<h3 style="color: #ffffff; font-size: 1.1rem; margin-bottom: 1rem;">🏆 Point Leaders</h3>', unsafe_allow_html=True)
+        top_points = get_top_scorers_for_teams(teams, player_stats, 'points', 5)
+        if top_points is not None:
+            for idx, player in top_points.iterrows():
+                ppg = player['Points_Per_Game']
+                st.markdown(f"""
+                    <div class="scorer-card">
+                        <div>
+                            <span class="scorer-name">{player['Player']}</span>
+                            <span class="scorer-team">{player['Team']} • {player['Pos']}</span>
+                        </div>
+                        <div class="scorer-stat">{ppg:.2f}/game</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.caption(f"{int(player['PTS'])} points in {int(player['GP'])} games")
+
 def main():
     predictions, standings, ml_predictions = load_data()
     
@@ -600,6 +730,18 @@ def main():
             if len(todays_games) > 0:
                 st.success(f"🏒 {len(todays_games)} games scheduled for today")
                 
+                # Get teams playing today
+                teams_playing = set()
+                for idx, game in todays_games.iterrows():
+                    teams_playing.add(game['Home'])
+                    teams_playing.add(game['Visitor'])
+                
+                # Display Top Scorers for today's games
+                player_stats = load_player_stats()
+                if player_stats is not None:
+                    display_top_scorers(list(teams_playing), player_stats)
+                
+                # Display game picks
                 for idx, game in todays_games.iterrows():
                     display_daily_pick(game, standings, predictions, ml_predictions, is_excel=True)
             else:
@@ -794,4 +936,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
