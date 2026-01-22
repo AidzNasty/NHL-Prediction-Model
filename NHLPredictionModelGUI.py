@@ -222,6 +222,42 @@ st.markdown("""
 EXCEL_FILE = 'Aidan Conte NHL 2025-26 Prediction Model.xlsx'
 EASTERN = pytz.timezone('America/New_York')
 
+# NHL Team abbreviation to full name mapping
+NHL_TEAM_MAP = {
+    'ANA': 'Anaheim Ducks',
+    'BOS': 'Boston Bruins',
+    'BUF': 'Buffalo Sabres',
+    'CAR': 'Carolina Hurricanes',
+    'CBJ': 'Columbus Blue Jackets',
+    'CGY': 'Calgary Flames',
+    'CHI': 'Chicago Blackhawks',
+    'COL': 'Colorado Avalanche',
+    'DAL': 'Dallas Stars',
+    'DET': 'Detroit Red Wings',
+    'EDM': 'Edmonton Oilers',
+    'FLA': 'Florida Panthers',
+    'LAK': 'Los Angeles Kings',
+    'MIN': 'Minnesota Wild',
+    'MTL': 'Montreal Canadiens',
+    'NJD': 'New Jersey Devils',
+    'NSH': 'Nashville Predators',
+    'NYI': 'New York Islanders',
+    'NYR': 'New York Rangers',
+    'OTT': 'Ottawa Senators',
+    'PHI': 'Philadelphia Flyers',
+    'PIT': 'Pittsburgh Penguins',
+    'SEA': 'Seattle Kraken',
+    'SJS': 'San Jose Sharks',
+    'STL': 'St. Louis Blues',
+    'TBL': 'Tampa Bay Lightning',
+    'TOR': 'Toronto Maple Leafs',
+    'UTA': 'Utah Hockey Club',
+    'VAN': 'Vancouver Canucks',
+    'VEG': 'Vegas Golden Knights',
+    'WPG': 'Winnipeg Jets',
+    'WSH': 'Washington Capitals'
+}
+
 @st.cache_data(ttl=3600)
 def load_data():
     """Load Excel data"""
@@ -281,6 +317,11 @@ def load_player_stats():
         df = pd.read_excel(EXCEL_FILE, sheet_name='NHL2025-26PlayerStats')
         df = df.dropna(how='all').dropna(axis=1, how='all')
         
+        # Convert Team abbreviations to full names
+        df['Team'] = df['Team'].astype(str)
+        df = df[df['Team'] != 'nan']
+        df['Team'] = df['Team'].map(NHL_TEAM_MAP).fillna(df['Team'])
+        
         # Calculate per-game stats
         if 'GP' in df.columns:
             if 'G' in df.columns:
@@ -295,9 +336,11 @@ def load_player_stats():
         st.sidebar.warning(f"Error loading player stats: {str(e)}")
         return None
 
-def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred):
+def calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, debug=False):
     """Calculate realistic scoring probabilities for players based on game matchup"""
     if player_stats is None or standings is None or len(player_stats) == 0:
+        if debug:
+            st.sidebar.warning("⚠️ Missing player_stats or standings")
         return None
     
     try:
@@ -309,7 +352,13 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
         home_players = player_stats[player_stats['Team'] == home_team].copy()
         away_players = player_stats[player_stats['Team'] == away_team].copy()
         
+        if debug:
+            st.sidebar.caption(f"🏠 {home_team}: {len(home_players)} players")
+            st.sidebar.caption(f"✈️ {away_team}: {len(away_players)} players")
+        
         if len(home_players) == 0 and len(away_players) == 0:
+            if debug:
+                st.sidebar.error(f"❌ No players found for either team!")
             return None
         
         # Expected team goals from predictions (or use team averages)
@@ -397,9 +446,8 @@ def calculate_player_probabilities(home_team, away_team, standings, player_stats
             'points': top_points
         }
     except Exception as e:
-        st.sidebar.error(f"Error calculating probabilities: {e}")
-        import traceback
-        st.sidebar.caption(traceback.format_exc())
+        if debug:
+            st.sidebar.error(f"❌ Error calculating probabilities: {e}")
         return None
 
 def calculate_excel_prediction(home_team, away_team, standings, predictions, game_date):
@@ -686,7 +734,9 @@ def display_daily_pick(game_row, standings, predictions, ml_predictions, player_
     
     # TOP PROBABLE SCORERS FOR THIS GAME
     if player_stats is not None and excel_pred is not None:
-        scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred)
+        # Enable debug for first game only
+        debug_mode = (home_team == "Boston Bruins" or away_team == "Boston Bruins")
+        scorer_data = calculate_player_probabilities(home_team, away_team, standings, player_stats, excel_pred, debug=debug_mode)
         
         if scorer_data and all(len(scorer_data[k]) > 0 for k in ['goals', 'assists', 'points']):
             st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 1px solid #30363d;'>", unsafe_allow_html=True)
@@ -944,6 +994,7 @@ def main():
         
         if player_stats is not None:
             st.sidebar.info(f"✅ Loaded {len(player_stats)} players")
+            st.sidebar.caption(f"Teams: {len(player_stats['Team'].unique())} unique teams")
             required_cols = ['Goals_Per_Game', 'Assists_Per_Game', 'Points_Per_Game']
             missing = [col for col in required_cols if col not in player_stats.columns]
             if missing:
@@ -960,26 +1011,31 @@ def main():
             # Get today's games
             todays_games = predictions[predictions['Date'] == today].copy()
             
-            # Remove any duplicate games
-            todays_games = todays_games.drop_duplicates(subset=['Home', 'Visitor', 'Date'], keep='first')
+            # Remove any duplicate games (shouldn't be any, but just in case)
+            todays_games = todays_games.drop_duplicates(subset=['Home', 'Visitor'], keep='first')
+            
+            st.sidebar.caption(f"Games today: {len(todays_games)}")
             
             if len(todays_games) > 0:
                 st.success(f"🏒 {len(todays_games)} games scheduled for today")
                 
                 # Display game picks with scorers
                 for idx, game in todays_games.iterrows():
-                    display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
+                    # Use a unique container for each game to prevent duplication
+                    with st.container():
+                        display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
             else:
                 st.info("📅 No games scheduled for today")
                 
                 # Show upcoming games
                 upcoming = predictions[predictions['Date'] > today].sort_values('Date').head(5)
-                upcoming = upcoming.drop_duplicates(subset=['Home', 'Visitor', 'Date'], keep='first')
+                upcoming = upcoming.drop_duplicates(subset=['Home', 'Visitor'], keep='first')
                 
                 if len(upcoming) > 0:
                     st.markdown("### 📆 Next Upcoming Games")
                     for idx, game in upcoming.iterrows():
-                        display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
+                        with st.container():
+                            display_daily_pick(game, standings, predictions, ml_predictions, player_stats, is_excel=True)
         else:
             st.error("❌ Date column not found in predictions")
     
