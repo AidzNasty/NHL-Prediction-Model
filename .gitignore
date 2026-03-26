@@ -1,0 +1,26 @@
+# Secrets — NEVER commit these
+.env
+*.env
+.streamlit/secrets.toml
+
+# Model files — too large for GitHub
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Excel/data files — keep local only
+*.xlsx
+*.csv
+*.db
+
+# Logs
+*.log
