@@ -210,6 +210,7 @@ def get_completed_games(con):
             g.OvertimeFlag,
             g.HomeIsBackToBack,
             g.AwayIsBackToBack,
+            CASE WHEN g.GameType = 'Playoffs' THEN 1 ELSE 0 END AS IsPlayoff,
             ht.TeamName AS HomeTeamName,
             awt.TeamName AS AwayTeamName
         FROM Games g
@@ -452,6 +453,7 @@ def build_game_features(con, home_team_id, away_team_id, season,
                                  (val(ag, "Goalie_GSAX", 0.0) if ag is not None else 0.0),
         "home_is_b2b":           1 if home_b2b else 0,
         "away_is_b2b":           1 if away_b2b else 0,
+        "is_playoff":            0,  # default regular season; override when needed
     }
 
     return features

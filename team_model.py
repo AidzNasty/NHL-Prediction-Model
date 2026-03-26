@@ -210,7 +210,12 @@ class TeamModel:
                 continue
 
             # Set playoff flag from game data
-            feats["is_playoff"] = int(game.get("IsPlayoff", 0))
+            # Use direct Series access with fallback
+            try:
+                is_playoff_val = int(game["IsPlayoff"]) if "IsPlayoff" in game.index else 0
+            except:
+                is_playoff_val = 0
+            feats["is_playoff"] = is_playoff_val
 
             # Add player projections using pre-loaded data
             if player_model is not None:
