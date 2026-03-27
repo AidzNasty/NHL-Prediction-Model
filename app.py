@@ -116,7 +116,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["Today's Games", "Player Props", "Model Accuracy", "Team Stats", "Stats Guide"],
+        ["Today's Games", "Player Props", "Model Accuracy", "Team Stats", "Hot & Cold Streaks", "Stats Guide"],
         label_visibility="collapsed"
     )
 
@@ -642,7 +642,188 @@ elif page == "Team Stats":
         st.plotly_chart(fig4, use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════
-# PAGE 5 — STATS GUIDE
+# PAGE 5 — HOT & COLD STREAKS
+# ═══════════════════════════════════════════════════════════════
+elif page == "Hot & Cold Streaks":
+    st.title("HOT & COLD STREAKS")
+    st.caption("Team and player performance over the last 10 games")
+
+    streak_tab, player_tab = st.tabs(["Team Streaks", "Player Streaks"])
+
+    with streak_tab:
+        teams_streak = q("""
+            WITH team_games AS (
+                SELECT
+                    TeamID, GameDate, WinnerTeamID, OvertimeFlag,
+                    CASE WHEN TeamID = HomeTeamID THEN HomeScore ELSE AwayScore END AS GF,
+                    CASE WHEN TeamID = HomeTeamID THEN AwayScore ELSE HomeScore END AS GA,
+                    ROW_NUMBER() OVER (PARTITION BY TeamID ORDER BY GameDate DESC) AS rn
+                FROM (
+                    SELECT HomeTeamID AS TeamID, GameDate, HomeScore, AwayScore,
+                           WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
+                    FROM Games WHERE Season = '2025-26' AND HomeScore IS NOT NULL
+                    UNION ALL
+                    SELECT AwayTeamID AS TeamID, GameDate, HomeScore, AwayScore,
+                           WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
+                    FROM Games WHERE Season = '2025-26' AND AwayScore IS NOT NULL
+                )
+            ),
+            last10 AS (
+                SELECT
+                    TeamID,
+                    COUNT(*) AS GP10,
+                    SUM(CASE WHEN WinnerTeamID = TeamID THEN 1 ELSE 0 END) AS W10,
+                    SUM(CASE WHEN WinnerTeamID != TeamID AND OvertimeFlag = TRUE THEN 1 ELSE 0 END) AS OTL10,
+                    SUM(CASE WHEN WinnerTeamID != TeamID AND (OvertimeFlag = FALSE OR OvertimeFlag IS NULL) THEN 1 ELSE 0 END) AS L10,
+                    ROUND(AVG(GF), 2) AS GF_avg,
+                    ROUND(AVG(GA), 2) AS GA_avg,
+                    MAX(GameDate) AS LastGame
+                FROM team_games
+                WHERE rn <= 10
+                GROUP BY TeamID
+            ),
+            streak_calc AS (
+                SELECT
+                    TeamID,
+                    CASE WHEN WinnerTeamID = TeamID THEN 'W' ELSE 'L' END AS last_result,
+                    ROW_NUMBER() OVER (PARTITION BY TeamID ORDER BY rn) AS seq,
+                    rn
+                FROM team_games WHERE rn <= 10
+            )
+            SELECT
+                t.TeamName AS Team,
+                l.W10, l.OTL10, l.L10,
+                l.GF_avg AS "GF/G (L10)",
+                l.GA_avg AS "GA/G (L10)",
+                CAST(l.LastGame AS DATE) AS "Last Game"
+            FROM last10 l
+            JOIN Teams t ON l.TeamID = t.TeamID
+            ORDER BY l.W10 DESC, l.OTL10 DESC
+        """)
+
+        if teams_streak.empty:
+            st.info("No team streak data available.")
+        else:
+            def streak_label(w):
+                if w >= 8:   return "🔥 On Fire"
+                elif w >= 6: return "🟢 Hot"
+                elif w == 5: return "🟡 Average"
+                elif w == 4: return "🟠 Cool"
+                else:        return "🧊 Cold"
+
+            def streak_color(w):
+                if w >= 8:   return "#EF4444"
+                elif w >= 6: return "#10B981"
+                elif w == 5: return "#F59E0B"
+                elif w == 4: return "#F97316"
+                else:        return "#3B82F6"
+
+            teams_streak["Streak"] = teams_streak["W10"].apply(streak_label)
+            teams_streak["Record (L10)"] = teams_streak.apply(
+                lambda r: f"{int(r['W10'])}-{int(r['L10'])}-{int(r['OTL10'])}", axis=1
+            )
+
+            # Summary metrics
+            hottest = teams_streak.iloc[0]
+            coldest = teams_streak.iloc[-1]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Hottest Team", hottest["Team"], f"{int(hottest['W10'])}-{int(hottest['L10'])}-{int(hottest['OTL10'])} last 10")
+            c2.metric("Coldest Team", coldest["Team"], f"{int(coldest['W10'])}-{int(coldest['L10'])}-{int(coldest['OTL10'])} last 10")
+            c3.metric("League Avg Wins (L10)", f"{teams_streak['W10'].mean():.1f}")
+
+            st.divider()
+
+            # Filter by tier
+            tier_filter = st.selectbox(
+                "Filter by streak",
+                ["All Teams", "🔥 On Fire (8-10W)", "🟢 Hot (6-7W)", "🟡 Average (5W)", "🟠 Cool (4W)", "🧊 Cold (0-3W)"]
+            )
+
+            df_show = teams_streak.copy()
+            if "On Fire" in tier_filter:
+                df_show = df_show[df_show["W10"] >= 8]
+            elif "Hot" in tier_filter:
+                df_show = df_show[df_show["W10"].between(6, 7)]
+            elif "Average" in tier_filter:
+                df_show = df_show[df_show["W10"] == 5]
+            elif "Cool" in tier_filter:
+                df_show = df_show[df_show["W10"] == 4]
+            elif "Cold" in tier_filter:
+                df_show = df_show[df_show["W10"] <= 3]
+
+            st.dataframe(
+                df_show[["Team", "Streak", "Record (L10)", "GF/G (L10)", "GA/G (L10)", "Last Game"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.divider()
+
+            # Bar chart — wins in last 10
+            st.markdown("### WINS IN LAST 10 GAMES")
+            fig_streak = px.bar(
+                teams_streak.sort_values("W10", ascending=True),
+                x="W10", y="Team",
+                orientation="h",
+                color="W10",
+                color_continuous_scale=["#3B82F6", "#F59E0B", "#10B981", "#EF4444"],
+                range_color=[0, 10],
+                text="Record (L10)",
+            )
+            fig_streak.add_vline(x=5, line_dash="dash", line_color="#6B7280",
+                                 annotation_text="Average")
+            fig_streak.update_layout(
+                paper_bgcolor="#0A0E1A", plot_bgcolor="#111827",
+                font=dict(color="#F9FAFB"),
+                xaxis=dict(range=[0, 10], gridcolor="#1F2937", title="Wins"),
+                yaxis=dict(gridcolor="#1F2937", title=""),
+                height=820, margin=dict(t=20, l=160),
+                coloraxis_showscale=False,
+                showlegend=False,
+            )
+            fig_streak.update_traces(textposition="outside")
+            st.plotly_chart(fig_streak, use_container_width=True)
+
+    with player_tab:
+        st.markdown("### PLAYER STREAKS")
+        st.info(
+            "Player game-by-game stats require the player gamelog table to be populated. "
+            "Run `scrape_player_gamelogs.py` to enable this feature. "
+            "Once available, this tab will show each player's goals, assists, and points "
+            "over their last 10 games."
+        )
+
+        # Show what we do have — recent player prediction actuals
+        st.markdown("### RECENT PLAYER PERFORMANCE (from predictions)")
+        st.caption("Players where we have actual results from completed games this season")
+
+        player_actuals = q("""
+            SELECT
+                pl.FirstName || ' ' || pl.LastName AS Player,
+                pl.Position AS Pos,
+                t.TeamName AS Team,
+                COUNT(*) AS Games,
+                SUM(pp.ActualGoals)   AS Goals,
+                SUM(pp.ActualAssists) AS Assists,
+                SUM(pp.ActualPoints)  AS Points,
+                ROUND(AVG(pp.ActualPoints), 2) AS "Pts/G"
+            FROM PlayerPredictions pp
+            JOIN Players pl ON pp.PlayerID = pl.PlayerID
+            JOIN Teams t    ON pl.TeamID   = t.TeamID
+            WHERE pp.ActualGoals IS NOT NULL
+            GROUP BY pl.PlayerID, pl.FirstName, pl.LastName, pl.Position, t.TeamName
+            HAVING COUNT(*) >= 1
+            ORDER BY SUM(pp.ActualPoints) DESC
+            LIMIT 50
+        """)
+
+        if player_actuals.empty:
+            st.info("No player actuals yet. Run `update_player_accuracy.py` after games complete.")
+        else:
+            st.dataframe(player_actuals, use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════
+# PAGE 6 — STATS GUIDE
 # ═══════════════════════════════════════════════════════════════
 elif page == "Stats Guide":
     st.title("STATS GUIDE")
