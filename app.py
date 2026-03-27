@@ -557,6 +557,22 @@ elif page == "Team Stats":
     season = st.selectbox("Season", ["2025-26", "2024-25"])
 
     teams_df = q(f"""
+        WITH game_goals AS (
+            SELECT TeamID,
+                   SUM(GF)        AS total_GF,
+                   SUM(GA)        AS total_GA,
+                   COUNT(*)       AS total_GP
+            FROM (
+                SELECT HomeTeamID AS TeamID, HomeScore AS GF, AwayScore AS GA
+                FROM Games
+                WHERE Season = '{season}' AND HomeScore IS NOT NULL
+                UNION ALL
+                SELECT AwayTeamID AS TeamID, AwayScore AS GF, HomeScore AS GA
+                FROM Games
+                WHERE Season = '{season}' AND AwayScore IS NOT NULL
+            )
+            GROUP BY TeamID
+        )
         SELECT
             t.TeamName                                          AS Team,
             ts.GP, ts.W, ts.L, ts.OTL, ts.Points,
@@ -566,15 +582,16 @@ elif page == "Team Stats":
             ROUND(ts.xGF_Pct,  1)                              AS "xGF%",
             ROUND(ts.HDCF_Pct, 1)                              AS "HDCF%",
             ROUND(ts.PDO,      1)                              AS PDO,
-            ROUND(ts.SV_Pct,        2)                         AS "SV%",
+            ROUND(ts.SV_Pct,   2)                              AS "SV%",
             ROUND(ts.SH_Pct,   1)                              AS "SH%",
-            ROUND(ts.GF * 1.0 / NULLIF(ts.GP,0), 2)           AS "GF/G",
-            ROUND(ts.GA * 1.0 / NULLIF(ts.GP,0), 2)           AS "GA/G",
+            ROUND(gg.total_GF * 1.0 / NULLIF(gg.total_GP, 0), 2) AS "GF/G",
+            ROUND(gg.total_GA * 1.0 / NULLIF(gg.total_GP, 0), 2) AS "GA/G",
             ROUND(ts.HomeWinPct * 100, 1)                     AS "Home W%",
             ROUND(ts.AwayWinPct * 100, 1)                     AS "Away W%",
             ROUND(ts.Team_FaceoffWinPct, 1)                   AS "FO%"
         FROM TeamStandings ts
         JOIN Teams t ON ts.TeamID = t.TeamID
+        LEFT JOIN game_goals gg ON ts.TeamID = gg.TeamID
         WHERE ts.Season = '{season}' AND ts.GP > 0
         ORDER BY ts.Points DESC
     """)
