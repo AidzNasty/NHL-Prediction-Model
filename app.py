@@ -27,7 +27,7 @@ def get_token():
 
 TOKEN, DB = get_token()
 
-# ── Page config ───────────────────────────────────────────────
+# -- Page config -----------------------------------------------
 st.set_page_config(
     page_title="NHL Predictions",
     page_icon="🏒",
@@ -79,7 +79,7 @@ div[data-testid="stDataFrame"] { background: #111827; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── DB Connection ─────────────────────────────────────────────
+# -- DB Connection ---------------------------------------------
 def get_con():
     return duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 
@@ -109,7 +109,7 @@ def has_actual_cols():
 
 HAS_ACTUALS = has_actual_cols()
 
-# ── Sidebar ───────────────────────────────────────────────────
+# -- Sidebar ---------------------------------------------------
 with st.sidebar:
     st.markdown("# 🏒 NHL PREDICTIONS")
     st.markdown("---")
@@ -145,7 +145,7 @@ with st.sidebar:
         st.markdown("*Model info unavailable*")
 
     st.markdown("---")
-    st.caption("Data: Natural Stat Trick, NHL API\nModel: RF + GB Ensemble (60/40)\nCV Accuracy: 60.5% ±1.5%")
+    st.caption("Data: Natural Stat Trick, NHL API\nModel: RF + GB Ensemble (60/40)\nCV Accuracy: 60.5% ±1.8%")
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 1 — TODAY'S GAMES
@@ -456,7 +456,7 @@ elif page == "Model Accuracy":
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Season Accuracy", f"{acc:.1f}%" if completed > 0 else "—")
         c2.metric("Correct / Completed", f"{correct} / {completed}")
-        c3.metric("CV Accuracy (5-fold)", "60.5% ±1.5%")
+        c3.metric("CV Accuracy (5-fold)", "60.5% ±1.8%")
         c4.metric("Total Predictions", total)
 
         st.divider()
@@ -464,7 +464,7 @@ elif page == "Model Accuracy":
         # Accuracy by tier
         st.markdown("### ACCURACY BY CONFIDENCE TIER")
         tiers = [
-            {"Tier": "High (≥65%)",    "Acc": high_c/high_t*100 if high_t > 0 else 0, "N": high_t},
+            {"Tier": "High (>=65%)",    "Acc": high_c/high_t*100 if high_t > 0 else 0, "N": high_t},
             {"Tier": "Medium (55-65%)", "Acc": med_c/med_t*100  if med_t  > 0 else 0, "N": med_t},
             {"Tier": "Low (<55%)",      "Acc": low_c/low_t*100  if low_t  > 0 else 0, "N": low_t},
         ]

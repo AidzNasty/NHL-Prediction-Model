@@ -5,17 +5,17 @@ Foundation module — pulls and builds all feature vectors
 from MotherDuck for use in both the team and player models.
 
 Provides:
-    get_connection()           → DuckDB connection
-    get_team_features(con, season)    → DataFrame of team-level features
-    get_player_features(con, season)  → DataFrame of player-level features
-    get_goalie_features(con, season)  → DataFrame of goalie-level features
-    get_completed_games(con)          → DataFrame of all completed games (training)
-    get_todays_games(con)             → DataFrame of today's scheduled games
-    get_confirmed_lineup(con, game_id)→ Dict of confirmed players per team
+    get_connection()           -> DuckDB connection
+    get_team_features(con, season)    -> DataFrame of team-level features
+    get_player_features(con, season)  -> DataFrame of player-level features
+    get_goalie_features(con, season)  -> DataFrame of goalie-level features
+    get_completed_games(con)          -> DataFrame of all completed games (training)
+    get_todays_games(con)             -> DataFrame of today's scheduled games
+    get_confirmed_lineup(con, game_id)-> Dict of confirmed players per team
     build_game_features(con, home_team_id, away_team_id, season, game_date)
-                                      → Feature dict ready for model input
+                                      -> Feature dict ready for model input
     build_player_game_features(con, player_id, opp_team_id, is_home, season)
-                                      → Feature dict for player model
+                                      -> Feature dict for player model
 """
 
 import os
@@ -29,11 +29,11 @@ load_dotenv()
 TOKEN = os.getenv("MOTHERDUCK_TOKEN")
 DB    = os.getenv("MOTHERDUCK_DB", "my_db")
 
-# ── Connection ────────────────────────────────────────────────
+# -- Connection ------------------------------------------------
 def get_connection():
     return duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 
-# ── Team Features ─────────────────────────────────────────────
+# -- Team Features ---------------------------------------------
 def get_team_features(con, season="2025-26"):
     """
     Returns a DataFrame with one row per team containing
@@ -101,7 +101,7 @@ def get_team_features(con, season="2025-26"):
     """).df()
     return df
 
-# ── Goalie Features ───────────────────────────────────────────
+# -- Goalie Features -------------------------------------------
 def get_goalie_features(con, season="2025-26"):
     """
     Returns best goalie stats per team (by games played).
@@ -136,7 +136,7 @@ def get_goalie_features(con, season="2025-26"):
     starters = df[df["starter_rank"] == 1].drop(columns=["starter_rank"])
     return starters
 
-# ── Player Features ───────────────────────────────────────────
+# -- Player Features -------------------------------------------
 def get_player_features(con, season="2025-26"):
     """
     Returns player-level advanced stats for all active skaters.
@@ -192,7 +192,7 @@ def get_player_features(con, season="2025-26"):
     """).df()
     return df
 
-# ── Completed Games (training data) ──────────────────────────
+# -- Completed Games (training data) --------------------------
 def get_completed_games(con):
     """
     Returns all completed games across both seasons
@@ -223,7 +223,7 @@ def get_completed_games(con):
     """).df()
     return df
 
-# ── Today's Games ─────────────────────────────────────────────
+# -- Today's Games ---------------------------------------------
 def get_todays_games(con, target_date=None):
     """
     Returns today's scheduled games (or target_date if specified).
@@ -253,7 +253,7 @@ def get_todays_games(con, target_date=None):
     """).df()
     return df
 
-# ── Confirmed Lineup ──────────────────────────────────────────
+# -- Confirmed Lineup ------------------------------------------
 def get_confirmed_lineup(con, team_id):
     """
     Returns confirmed active/inactive players for a team
@@ -284,7 +284,87 @@ def get_confirmed_lineup(con, team_id):
             }
     return lineup
 
-# ── HomeIce Differential ──────────────────────────────────────
+# -- Rolling 10-Game Team Stats --------------------------------
+def get_team_rolling_stats(con, team_id, before_date, n=10):
+    """
+    Calculates team performance over last N games before a given date.
+    Uses GameStats for shots/hits and Games for goals/wins.
+    Returns a dict of rolling features.
+    """
+    try:
+        result = con.execute(f"""
+            SELECT
+                COUNT(*)                                                AS games_played,
+                -- Wins
+                SUM(CASE
+                    WHEN g.HomeTeamID = {team_id} AND g.HomeScore > g.AwayScore THEN 1
+                    WHEN g.AwayTeamID = {team_id} AND g.AwayScore > g.HomeScore THEN 1
+                    ELSE 0 END)                                        AS wins,
+                -- Goals for
+                SUM(CASE
+                    WHEN g.HomeTeamID = {team_id} THEN g.HomeScore
+                    ELSE g.AwayScore END)                              AS goals_for,
+                -- Goals against
+                SUM(CASE
+                    WHEN g.HomeTeamID = {team_id} THEN g.AwayScore
+                    ELSE g.HomeScore END)                              AS goals_against,
+                -- OT games
+                SUM(CASE WHEN g.OvertimeFlag THEN 1 ELSE 0 END)       AS ot_games,
+                -- Shots for (from GameStats)
+                AVG(gs.Shots)                                          AS avg_shots,
+                -- Hits
+                AVG(gs.Hits)                                          AS avg_hits,
+                -- Blocked shots
+                AVG(gs.BlockedShots)                                  AS avg_blocks
+            FROM (
+                SELECT GameID, GameDate, HomeTeamID, AwayTeamID,
+                       HomeScore, AwayScore, OvertimeFlag
+                FROM Games
+                WHERE (HomeTeamID = {team_id} OR AwayTeamID = {team_id})
+                  AND HomeScore IS NOT NULL
+                  AND GameDate < '{before_date}'
+                ORDER BY GameDate DESC
+                LIMIT {n}
+            ) g
+            LEFT JOIN GameStats gs
+                ON gs.GameID = g.GameID
+               AND gs.TeamID = {team_id}
+        """).fetchone()
+
+        if not result or result[0] == 0:
+            return _default_rolling()
+
+        gp, wins, gf, ga, ot, shots, hits, blocks = result
+        gp = int(gp or 1)
+
+        return {
+            "rolling_win_pct":      round(wins / gp, 3) if gp > 0 else 0.5,
+            "rolling_gf_per_game":  round(gf / gp, 2)  if gp > 0 else 3.0,
+            "rolling_ga_per_game":  round(ga / gp, 2)  if gp > 0 else 3.0,
+            "rolling_goal_diff":    round((gf - ga) / gp, 2) if gp > 0 else 0.0,
+            "rolling_ot_rate":      round(ot / gp, 3) if gp > 0 else 0.21,
+            "rolling_shots":        round(float(shots or 28.0), 1),
+            "rolling_hits":         round(float(hits  or 20.0), 1),
+            "rolling_blocks":       round(float(blocks or 12.0), 1),
+            "rolling_games":        gp,
+        }
+    except Exception as e:
+        return _default_rolling()
+
+def _default_rolling():
+    return {
+        "rolling_win_pct":     0.5,
+        "rolling_gf_per_game": 3.0,
+        "rolling_ga_per_game": 3.0,
+        "rolling_goal_diff":   0.0,
+        "rolling_ot_rate":     0.21,
+        "rolling_shots":       28.0,
+        "rolling_hits":        20.0,
+        "rolling_blocks":      12.0,
+        "rolling_games":       0,
+    }
+
+
 def calc_homeice_differential(home_team_row, away_team_row):
     """
     Preserves the HomeIce formula from the original Excel model
@@ -297,7 +377,7 @@ def calc_homeice_differential(home_team_row, away_team_row):
     away_awp = away_team_row.get("AwayWinPct", 0.5) or 0.5
     return round((home_hwp - away_awp) * 6, 3)
 
-# ── Build Game Feature Vector ─────────────────────────────────
+# -- Build Game Feature Vector ---------------------------------
 def build_game_features(con, home_team_id, away_team_id, season,
                         home_b2b=False, away_b2b=False):
     """
@@ -366,6 +446,11 @@ def build_game_features(con, home_team_id, away_team_id, season,
 
     # HomeIce differential
     homeice = calc_homeice_differential(home, away)
+
+    # Rolling 10-game stats
+    today_str = str(date.today())
+    home_rolling = get_team_rolling_stats(con, home_team_id, today_str)
+    away_rolling = get_team_rolling_stats(con, away_team_id, today_str)
 
     # Build feature dict
     def val(series, key, default=0.0):
@@ -453,12 +538,30 @@ def build_game_features(con, home_team_id, away_team_id, season,
                                  (val(ag, "Goalie_GSAX", 0.0) if ag is not None else 0.0),
         "home_is_b2b":           1 if home_b2b else 0,
         "away_is_b2b":           1 if away_b2b else 0,
-        "is_playoff":            0,  # default regular season; override when needed
+        "is_playoff":            0,
+
+        # Rolling 10-game form — home
+        "home_rolling_win_pct":      home_rolling["rolling_win_pct"],
+        "home_rolling_gf_per_game":  home_rolling["rolling_gf_per_game"],
+        "home_rolling_ga_per_game":  home_rolling["rolling_ga_per_game"],
+        "home_rolling_goal_diff":    home_rolling["rolling_goal_diff"],
+        "home_rolling_shots":        home_rolling["rolling_shots"],
+
+        # Rolling 10-game form — away
+        "away_rolling_win_pct":      away_rolling["rolling_win_pct"],
+        "away_rolling_gf_per_game":  away_rolling["rolling_gf_per_game"],
+        "away_rolling_ga_per_game":  away_rolling["rolling_ga_per_game"],
+        "away_rolling_goal_diff":    away_rolling["rolling_goal_diff"],
+        "away_rolling_shots":        away_rolling["rolling_shots"],
+
+        # Rolling differentials — hot team vs cold team
+        "rolling_win_pct_diff":   home_rolling["rolling_win_pct"] - away_rolling["rolling_win_pct"],
+        "rolling_goal_diff_diff": home_rolling["rolling_goal_diff"] - away_rolling["rolling_goal_diff"],
     }
 
     return features
 
-# ── Build Player Game Feature Vector ─────────────────────────
+# -- Build Player Game Feature Vector -------------------------
 def build_player_game_features(con, player_id, opp_team_id,
                                 is_home, season, b2b=False):
     """
@@ -520,7 +623,7 @@ def build_player_game_features(con, player_id, opp_team_id,
 
     return features
 
-# ── Quick sanity check when run directly ─────────────────────
+# -- Quick sanity check when run directly ---------------------
 if __name__ == "__main__":
     print("Connecting to MotherDuck...")
     con = get_connection()

@@ -31,7 +31,7 @@ print(f"Connecting to MotherDuck: {DB}...")
 con = duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 print("Connected!\n")
 
-# ── 1. Add columns to TeamStandings ──────────────────────────
+# -- 1. Add columns to TeamStandings --------------------------
 print("Step 1: Adding columns to TeamStandings...")
 
 new_cols = [
@@ -66,7 +66,7 @@ for col, dtype in new_cols:
     else:
         print(f"  Already exists: {col}")
 
-# ── 2. Add columns to Games ───────────────────────────────────
+# -- 2. Add columns to Games -----------------------------------
 print("\nStep 2: Adding back-to-back columns to Games...")
 
 games_cols = [
@@ -86,7 +86,7 @@ for col, dtype in games_cols:
     else:
         print(f"  Already exists: {col}")
 
-# ── 3. Populate Home/Away splits in TeamStandings ────────────
+# -- 3. Populate Home/Away splits in TeamStandings ------------
 print("\nStep 3: Populating home/away splits...")
 
 for season in ["2025-26", "2024-25"]:
@@ -190,7 +190,7 @@ for season in ["2025-26", "2024-25"]:
     """).fetchone()[0]
     print(f"    Updated {updated} teams")
 
-# ── 4. Populate back-to-back flags in Games ───────────────────
+# -- 4. Populate back-to-back flags in Games -------------------
 print("\nStep 4: Populating back-to-back flags...")
 
 for season in ["2025-26", "2024-25"]:
@@ -231,7 +231,7 @@ for season in ["2025-26", "2024-25"]:
 
     print(f"    {b2b_count} back-to-back games flagged")
 
-# ── Summary ───────────────────────────────────────────────────
+# -- Summary ---------------------------------------------------
 print("\n=== Complete ===")
 sample = con.execute("""
     SELECT TeamID, Season, HomeWinPct, AwayWinPct,

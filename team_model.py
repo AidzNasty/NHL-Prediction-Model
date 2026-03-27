@@ -56,7 +56,7 @@ class TeamModel:
         self.training_games = 0
         self.cv_accuracy   = 0.0
 
-    # ── Fast feature builder (no DB calls) ───────────────────
+    # -- Fast feature builder (no DB calls) -------------------
     def _build_game_feats_fast(self, home_id, away_id,
                                 teams_df, goalies_df,
                                 home_b2b=False, away_b2b=False):
@@ -150,10 +150,23 @@ class TeamModel:
             "GSAX_differential":    v(hg, "Goalie_GSAX", 0.0) - v(ag, "Goalie_GSAX", 0.0),
             "home_is_b2b":          1 if home_b2b else 0,
             "away_is_b2b":          1 if away_b2b else 0,
-            "is_playoff":           0,  # overridden in train loop
+            "is_playoff":           0,
+            # Rolling 10-game — populated in train loop per game
+            "home_rolling_win_pct":     0.5,
+            "home_rolling_gf_per_game": 3.0,
+            "home_rolling_ga_per_game": 3.0,
+            "home_rolling_goal_diff":   0.0,
+            "home_rolling_shots":       28.0,
+            "away_rolling_win_pct":     0.5,
+            "away_rolling_gf_per_game": 3.0,
+            "away_rolling_ga_per_game": 3.0,
+            "away_rolling_goal_diff":   0.0,
+            "away_rolling_shots":       28.0,
+            "rolling_win_pct_diff":     0.0,
+            "rolling_goal_diff_diff":   0.0,
         }
 
-    # ── Train ────────────────────────────────────────────────
+    # -- Train ------------------------------------------------
     def train(self, con, player_model=None):
         """
         Train on all completed games from both seasons.
@@ -187,6 +200,77 @@ class TeamModel:
             print(f"    {len(season_cache[s]['teams'])} teams, "
                   f"{len(season_cache[s]['players'])} players loaded")
 
+        # Pre-compute rolling 10-game stats with ONE SQL query
+        print("  Pre-computing rolling 10-game stats (batch SQL)...")
+        rolling_df = con.execute("""
+            WITH game_results AS (
+                SELECT
+                    g.GameDate,
+                    g.HomeTeamID AS TeamID,
+                    g.HomeScore  AS GF,
+                    g.AwayScore  AS GA,
+                    CASE WHEN g.HomeScore > g.AwayScore THEN 1 ELSE 0 END AS Win,
+                    COALESCE(gs.Shots, 28) AS Shots
+                FROM Games g
+                LEFT JOIN GameStats gs ON gs.GameID=g.GameID AND gs.TeamID=g.HomeTeamID
+                WHERE g.HomeScore IS NOT NULL
+                UNION ALL
+                SELECT
+                    g.GameDate,
+                    g.AwayTeamID AS TeamID,
+                    g.AwayScore  AS GF,
+                    g.HomeScore  AS GA,
+                    CASE WHEN g.AwayScore > g.HomeScore THEN 1 ELSE 0 END AS Win,
+                    COALESCE(gs.Shots, 28) AS Shots
+                FROM Games g
+                LEFT JOIN GameStats gs ON gs.GameID=g.GameID AND gs.TeamID=g.AwayTeamID
+                WHERE g.HomeScore IS NOT NULL
+            ),
+            rolling AS (
+                SELECT
+                    a.TeamID,
+                    a.GameDate AS ForDate,
+                    AVG(b.Win)   OVER w AS rolling_win_pct,
+                    AVG(b.GF)    OVER w AS rolling_gf,
+                    AVG(b.GA)    OVER w AS rolling_ga,
+                    AVG(b.GF-b.GA) OVER w AS rolling_goal_diff,
+                    AVG(b.Shots) OVER w AS rolling_shots
+                FROM game_results a
+                JOIN game_results b
+                  ON b.TeamID = a.TeamID
+                 AND b.GameDate < a.GameDate
+                WINDOW w AS (
+                    PARTITION BY a.TeamID, a.GameDate
+                    ORDER BY b.GameDate DESC
+                    ROWS BETWEEN CURRENT ROW AND 9 FOLLOWING
+                )
+            )
+            SELECT DISTINCT
+                TeamID,
+                ForDate,
+                COALESCE(rolling_win_pct, 0.5)  AS rolling_win_pct,
+                COALESCE(rolling_gf, 3.0)        AS rolling_gf_per_game,
+                COALESCE(rolling_ga, 3.0)        AS rolling_ga_per_game,
+                COALESCE(rolling_goal_diff, 0.0) AS rolling_goal_diff,
+                COALESCE(rolling_shots, 28.0)    AS rolling_shots
+            FROM rolling
+        """).df()
+
+        # Build lookup dict: (team_id, date_str) -> rolling stats dict
+        from db_features import _default_rolling
+        default_rolling = _default_rolling()
+        rolling_cache = {}
+        for _, row in rolling_df.iterrows():
+            key = (int(row["TeamID"]), str(row["ForDate"])[:10])
+            rolling_cache[key] = {
+                "rolling_win_pct":     float(row["rolling_win_pct"]),
+                "rolling_gf_per_game": float(row["rolling_gf_per_game"]),
+                "rolling_ga_per_game": float(row["rolling_ga_per_game"]),
+                "rolling_goal_diff":   float(row["rolling_goal_diff"]),
+                "rolling_shots":       float(row["rolling_shots"]),
+            }
+        print(f"    {len(rolling_cache)} team/date combinations loaded")
+
         for _, game in games.iterrows():
             home_id  = int(game["HomeTeamID"])
             away_id  = int(game["AwayTeamID"])
@@ -216,6 +300,23 @@ class TeamModel:
             except:
                 is_playoff_val = 0
             feats["is_playoff"] = is_playoff_val
+
+            # Rolling stats pre-computed in batch above
+            game_date = str(game["GameDate"])[:10]
+            home_r = rolling_cache.get((home_id, game_date), default_rolling)
+            away_r = rolling_cache.get((away_id, game_date), default_rolling)
+            feats["home_rolling_win_pct"]     = home_r["rolling_win_pct"]
+            feats["home_rolling_gf_per_game"] = home_r["rolling_gf_per_game"]
+            feats["home_rolling_ga_per_game"] = home_r["rolling_ga_per_game"]
+            feats["home_rolling_goal_diff"]   = home_r["rolling_goal_diff"]
+            feats["home_rolling_shots"]       = home_r["rolling_shots"]
+            feats["away_rolling_win_pct"]     = away_r["rolling_win_pct"]
+            feats["away_rolling_gf_per_game"] = away_r["rolling_gf_per_game"]
+            feats["away_rolling_ga_per_game"] = away_r["rolling_ga_per_game"]
+            feats["away_rolling_goal_diff"]   = away_r["rolling_goal_diff"]
+            feats["away_rolling_shots"]       = away_r["rolling_shots"]
+            feats["rolling_win_pct_diff"]     = home_r["rolling_win_pct"] - away_r["rolling_win_pct"]
+            feats["rolling_goal_diff_diff"]   = home_r["rolling_goal_diff"] - away_r["rolling_goal_diff"]
 
             # Add player projections using pre-loaded data
             if player_model is not None:
@@ -263,7 +364,7 @@ class TeamModel:
         y_away   = np.array(y_away_list)
         y_ot     = np.array(y_ot_list)
 
-        # ── Sample weights — regular season games weighted 2x playoff ──
+        # -- Sample weights — regular season games weighted 2x playoff --
         is_playoff_arr = X["is_playoff"].values if "is_playoff" in X.columns else np.zeros(len(X))
         sample_weights = np.where(is_playoff_arr == 1, 1.0, 2.0)
 
@@ -400,7 +501,7 @@ class TeamModel:
               f"ensemble accuracy: {self.cv_accuracy:.1%}")
         self.save()
 
-    # ── Predict single game ───────────────────────────────────
+    # -- Predict single game -----------------------------------
     def predict_game(self, con, home_team_id, away_team_id,
                      season, home_b2b=False, away_b2b=False,
                      home_proj_goals=None, away_proj_goals=None,
@@ -493,7 +594,7 @@ class TeamModel:
             "away_b2b":         away_b2b,
         }
 
-    # ── Save / Load ───────────────────────────────────────────
+    # -- Save / Load -------------------------------------------
     def save(self, path=MODEL_FILE):
         data = {
             "rf_model":          self.rf_model,
@@ -511,7 +612,7 @@ class TeamModel:
         }
         with open(path, "wb") as f:
             pickle.dump(data, f)
-        print(f"  Team model saved → {path}")
+        print(f"  Team model saved -> {path}")
 
     def load(self, path=MODEL_FILE):
         with open(path, "rb") as f:
@@ -533,7 +634,7 @@ class TeamModel:
         return self
 
 
-# ── Quick test ────────────────────────────────────────────────
+# -- Quick test ------------------------------------------------
 if __name__ == "__main__":
     con = get_connection()
     print("Connected!\n")

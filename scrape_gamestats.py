@@ -36,6 +36,10 @@ import duckdb
 from datetime import date, timedelta
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 
 load_dotenv()
 
@@ -116,8 +120,7 @@ team_id_to_abbrev = {r[0]: HR_ABBREV.get(r[1], "") for r in team_rows}
 # ============================================================
 where_clauses = [
     "gs.GameID IS NULL",
-    "g.HomeScore IS NOT NULL",
-    "g.AwayScore IS NOT NULL"
+    f"g.GameDate <= '{date.today()}'"
 ]
 
 if args.date:
@@ -167,43 +170,21 @@ def build_url(game_date, home_team_id):
     abbrev   = team_id_to_abbrev.get(home_team_id, "")
     return f"https://www.hockey-reference.com/boxscores/{date_str}0{abbrev}.html"
 
-def sum_col_by_index(table, col_idx):
-    """Sum a column by its exact index across all player rows."""
+def sum_col_by_stat(table, stat_name):
+    """Sum a column by data-stat attribute — robust to column order changes."""
     if table is None:
         return None
     total = 0
+    found = False
     for row in table.find("tbody").find_all("tr"):
-        cells = row.find_all(["td", "th"])
-        if len(cells) > col_idx:
-            val = cells[col_idx].get_text(strip=True)
+        cell = row.find(["td","th"], {"data-stat": stat_name})
+        if cell:
+            found = True
             try:
-                total += int(val)
+                total += int(cell.get_text(strip=True))
             except:
                 pass
-    return total
-
-def sum_col_by_header(table, header_text):
-    """Sum a column by header text in the adv table (single header row)."""
-    if table is None:
-        return None
-    thead = table.find("thead")
-    if not thead:
-        return None
-    headers = [th.get_text(strip=True) for th in thead.find_all("th")]
-    try:
-        col_idx = headers.index(header_text)
-    except ValueError:
-        return None
-    total = 0
-    for row in table.find("tbody").find_all("tr"):
-        cells = row.find_all(["td", "th"])
-        if len(cells) > col_idx:
-            val = cells[col_idx].get_text(strip=True)
-            try:
-                total += int(val)
-            except:
-                pass
-    return total
+    return total if found else None
 
 def scrape_box_score(url, home_abbrev, away_abbrev):
     try:
@@ -223,6 +204,25 @@ def scrape_box_score(url, home_abbrev, away_abbrev):
         soup    = BeautifulSoup(resp.text, "html.parser")
         results = {}
 
+        # Extract final scores from scorebox
+        scorebox = soup.find("div", {"class": "scorebox"})
+        scores = {}
+        if scorebox:
+            score_divs = scorebox.find_all("div", {"class": "score"})
+            team_links = []
+            for strong in scorebox.find_all("strong"):
+                a = strong.find("a", href=True)
+                if a and "/teams/" in a["href"]:
+                    parts = a["href"].split("/")
+                    if len(parts) >= 3:
+                        team_links.append(parts[2].upper())
+            if len(score_divs) >= 2 and len(team_links) >= 2:
+                try:
+                    scores[team_links[0]] = int(score_divs[0].get_text(strip=True))  # away
+                    scores[team_links[1]] = int(score_divs[1].get_text(strip=True))  # home
+                except:
+                    pass
+
         for team_abbrev in [away_abbrev, home_abbrev]:
             skater_table = soup.find("table", {"id": f"{team_abbrev}_skaters"})
             adv_table    = soup.find("table", {"id": f"{team_abbrev}_adv_ALLAll"})
@@ -231,15 +231,14 @@ def scrape_box_score(url, home_abbrev, away_abbrev):
                 print(f"  [WARN] No skater table for {team_abbrev}")
                 continue
 
-            # Confirmed indices from debug:
-            # [14] = S (Shots), [6] = PIM, [8] = PP Goals
-            shots    = sum_col_by_index(skater_table, 14)
-            pim      = sum_col_by_index(skater_table, 6)
-            pp_goals = sum_col_by_index(skater_table, 8)
+            # Use data-stat names — robust to column order changes
+            shots    = sum_col_by_stat(skater_table, "shots")
+            pim      = sum_col_by_stat(skater_table, "pen_min")
+            pp_goals = sum_col_by_stat(skater_table, "goals_pp")
 
-            # Advanced table: HIT and BLK columns
-            hits          = sum_col_by_header(adv_table, "HIT")
-            blocked_shots = sum_col_by_header(adv_table, "BLK")
+            # Advanced table: HIT and BLK by data-stat
+            hits          = sum_col_by_stat(adv_table, "hits")
+            blocked_shots = sum_col_by_stat(adv_table, "blocks")
 
             results[team_abbrev] = {
                 "shots":         shots,
@@ -249,7 +248,7 @@ def scrape_box_score(url, home_abbrev, away_abbrev):
                 "blocked_shots": blocked_shots,
             }
 
-        return results if len(results) >= 2 else None
+        return {"stats": results, "scores": scores} if len(results) >= 2 else None
 
     except requests.exceptions.ConnectionError as e:
         print(f"  [CONNECTION ERROR] {e}")
@@ -268,12 +267,6 @@ def safe_int(val):
 # Main scraping loop
 # ============================================================
 
-# Clear the 10 test rows we already inserted
-existing = con.execute("SELECT COUNT(*) FROM GameStats").fetchone()[0]
-if existing > 0 and existing <= 20:
-    print(f"Clearing {existing} test rows from previous run...")
-    con.execute("DELETE FROM GameStats")
-
 stat_id  = con.execute("SELECT COALESCE(MAX(StatID), 0) FROM GameStats").fetchone()[0] + 1
 inserted = 0
 failed   = 0
@@ -287,12 +280,29 @@ for i, (game_id, game_date, home_id, away_id) in enumerate(games):
 
     print(f"[{i+1}/{len(games)}] {str(game_date)[:10]} | {away_name} @ {home_name}")
 
-    stats = scrape_box_score(url, home_abbr, away_abbr)
+    result = scrape_box_score(url, home_abbr, away_abbr)
 
-    if not stats:
+    if not result:
         print(f"  [SKIP] Could not scrape stats")
         failed += 1
     else:
+        stats  = result["stats"]
+        scores = result["scores"]
+
+        # Update Games table with actual scores
+        if scores and home_abbr in scores and away_abbr in scores:
+            home_score = scores[home_abbr]
+            away_score = scores[away_abbr]
+            winner_id  = home_id if home_score > away_score else away_id
+            con.execute(f"""
+                UPDATE Games SET
+                    HomeScore    = {home_score},
+                    AwayScore    = {away_score},
+                    WinnerTeamID = {winner_id}
+                WHERE GameID = {game_id}
+            """)
+            print(f"  Score: {away_abbr} {away_score} — {home_score} {home_abbr}")
+
         for team_id, abbrev in [(away_id, away_abbr), (home_id, home_abbr)]:
             team_stats = stats.get(abbrev)
             if not team_stats:

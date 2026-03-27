@@ -20,6 +20,10 @@ import requests
 import duckdb
 from datetime import date, timedelta
 from dotenv import load_dotenv
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 
 load_dotenv()
 TOKEN = os.getenv("MOTHERDUCK_TOKEN")
@@ -33,7 +37,7 @@ print(f"Connecting to MotherDuck: {DB}...")
 con = duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 print("Connected!\n")
 
-# ── Add accuracy columns if missing ──────────────────────────
+# -- Add accuracy columns if missing --------------------------
 print("Checking PlayerPredictions schema...")
 existing_cols = [r[0].lower() for r in con.execute("""
     SELECT column_name FROM information_schema.columns
@@ -56,7 +60,7 @@ for col, dtype in new_cols:
     else:
         print(f"  Already exists: {col}")
 
-# ── Get pending player predictions ───────────────────────────
+# -- Get pending player predictions ---------------------------
 print("\nFinding completed games with pending player predictions...")
 pending = con.execute("""
     SELECT DISTINCT
@@ -69,9 +73,9 @@ pending = con.execute("""
     WHERE pp.ActualGoals IS NULL
       AND g.HomeScore IS NOT NULL
       AND g.AwayScore IS NOT NULL
-      AND g.GameDate >= '2026-01-01'
+      AND g.GameDate >= '2025-10-01'
     ORDER BY g.GameDate DESC
-    LIMIT 30
+    LIMIT 300
 """).fetchall()
 
 print(f"  Games to update: {len(pending)}")
@@ -93,35 +97,25 @@ for game_id, game_date, home_id, away_id in pending:
 
         schedule = schedule_resp.json()
 
-        # Find matching game
+        # DB Teams table uses the same abbreviations as the NHL API
+        # Find matching game by home team
         nhl_game_id = None
         for week in schedule.get("gameWeek", []):
             if str(week.get("date",""))[:10] == date_str:
                 for g in week.get("games", []):
-                    home_abbrev = g.get("homeTeam", {}).get("abbrev", "")
-                    away_abbrev = g.get("awayTeam", {}).get("abbrev", "")
-
-                    # Match to our team IDs
+                    api_home = g.get("homeTeam", {}).get("abbrev", "")
                     home_match = con.execute(f"""
                         SELECT COUNT(*) FROM Teams
-                        WHERE TeamID = {home_id}
-                          AND (Abbreviation = '{home_abbrev}'
-                               OR Abbreviation = '{
-                                   home_abbrev.replace("NJD","N.J")
-                                              .replace("SJS","S.J")
-                                              .replace("TBL","T.B")
-                                              .replace("LAK","L.A")
-                               }')
+                        WHERE TeamID = {home_id} AND Abbreviation = '{api_home}'
                     """).fetchone()[0]
-
                     if home_match > 0:
                         nhl_game_id = g.get("id")
                         break
-
             if nhl_game_id:
                 break
 
         if not nhl_game_id:
+            print(f"  [SKIP] Game {game_id} on {date_str}: NHL game ID not found")
             continue
 
         # Get boxscore
@@ -137,23 +131,29 @@ for game_id, game_date, home_id, away_id in pending:
         if not pbg:
             continue
 
-        # Build player stats lookup: NHL player ID → stats
-        # We need to match by name since we don't store NHL player IDs
+        # Build player stats lookup keyed by both full name and "F. Lastname"
+        # NHL API returns abbreviated names like "M. Tkachuk" in name.default
         player_stats = {}
+
+        def _add_player(raw_name, goals, assists, points):
+            """Store stats under the raw key and a normalized last-name key."""
+            key = raw_name.strip().lower()
+            entry = {"goals": goals, "assists": assists, "points": points}
+            player_stats[key] = entry
+            # Also store under just last name for fallback
+            parts = key.split()
+            if len(parts) >= 2:
+                last = parts[-1]
+                player_stats.setdefault(f"__last__{last}", entry)
 
         for side in ["homeTeam", "awayTeam"]:
             side_data = pbg.get(side, {})
             for group in ["forwards", "defense", "goalies"]:
                 for p in side_data.get(group, []):
-                    name = p.get("name", {}).get("default", "")
+                    raw = p.get("name", {}).get("default", "")
                     goals   = p.get("goals", 0) or 0
                     assists = p.get("assists", 0) or 0
-                    points  = goals + assists
-                    player_stats[name.lower()] = {
-                        "goals":   goals,
-                        "assists": assists,
-                        "points":  points,
-                    }
+                    _add_player(raw, goals, assists, goals + assists)
 
         # Get all player predictions for this game
         preds = con.execute(f"""
@@ -168,22 +168,28 @@ for game_id, game_date, home_id, away_id in pending:
         """).fetchall()
 
         game_updated = 0
+        no_match = 0
         for pred_id, player_id, goal_prob, assist_prob, point_prob, name in preds:
-            # Match player name
-            norm_name = name.lower()
-            # Try full name first, then last name only
+            # DB name: "Matthew Tkachuk"
+            # API name: may be "M. Tkachuk" or "Matthew Tkachuk"
+            norm_name = name.strip().lower()
+            db_parts  = norm_name.split()
+
+            # 1. Exact full-name match
             stats = player_stats.get(norm_name)
 
-            if not stats:
-                # Try abbreviated name match (API uses "F. Lastname")
-                last = norm_name.split()[-1] if norm_name else ""
-                for api_name, api_stats in player_stats.items():
-                    if api_name.endswith(last) and last:
-                        stats = api_stats
-                        break
+            # 2. Build "F. Lastname" from DB name and try that key
+            if not stats and len(db_parts) >= 2:
+                abbreviated = f"{db_parts[0][0]}. {db_parts[-1]}"
+                stats = player_stats.get(abbreviated)
+
+            # 3. Last-name fallback (handles hyphenated names too)
+            if not stats and db_parts:
+                stats = player_stats.get(f"__last__{db_parts[-1]}")
 
             if not stats:
-                continue
+                # Player not in boxscore = scratched/didn't play -> actuals are 0
+                stats = {"goals": 0, "assists": 0, "points": 0}
 
             actual_goals   = stats["goals"]
             actual_assists = stats["assists"]
@@ -214,14 +220,14 @@ for game_id, game_date, home_id, away_id in pending:
             game_updated  += 1
             total_updated += 1
 
+        home_name = con.execute(
+            f"SELECT TeamName FROM Teams WHERE TeamID = {home_id}"
+        ).fetchone()[0]
+        away_name = con.execute(
+            f"SELECT TeamName FROM Teams WHERE TeamID = {away_id}"
+        ).fetchone()[0]
         if game_updated > 0:
-            home_name = con.execute(
-                f"SELECT TeamName FROM Teams WHERE TeamID = {home_id}"
-            ).fetchone()[0]
-            away_name = con.execute(
-                f"SELECT TeamName FROM Teams WHERE TeamID = {away_id}"
-            ).fetchone()[0]
-            print(f"  ✓ {game_date} {away_name} @ {home_name}: "
+            print(f"  OK {game_date} {away_name} @ {home_name}: "
                   f"{game_updated} players updated")
 
         time.sleep(0.5)
@@ -230,7 +236,7 @@ for game_id, game_date, home_id, away_id in pending:
         print(f"  [ERROR] Game {game_id}: {e}")
         continue
 
-# ── Accuracy Summary ──────────────────────────────────────────
+# -- Accuracy Summary ------------------------------------------
 print(f"\n{'='*55}")
 print(f"  Players updated: {total_updated}")
 
@@ -254,10 +260,10 @@ print(f"  With actual results:  {with_actuals}")
 
 if gt and gt > 0:
     print(f"  Goal accuracy:        {gc}/{gt} ({gc/gt*100:.1f}%)"
-          f" [when predicted ≥20%]")
+          f" [when predicted >=20%]")
 if pt and pt > 0:
     print(f"  Point accuracy:       {pc}/{pt} ({pc/pt*100:.1f}%)"
-          f" [when predicted ≥40%]")
+          f" [when predicted >=40%]")
 
 print(f"{'='*55}")
 con.close()

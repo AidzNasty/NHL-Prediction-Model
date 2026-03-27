@@ -210,7 +210,7 @@ for link in box_links:
         max_stat_id += 1
 
     ot_str = " (OT/SO)" if is_ot else ""
-    print(f"  ✓ {game_date} {away_name} @ {home_name}: {away_score}-{home_score}{ot_str}")
+    print(f"  OK {game_date} {away_name} @ {home_name}: {away_score}-{home_score}{ot_str}")
     inserted += 1
 
 total = con.execute("SELECT COUNT(*) FROM Games WHERE GameType='Playoffs'").fetchone()[0]

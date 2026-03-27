@@ -24,8 +24,12 @@ from db_features import (
 )
 from player_model import PlayerModel
 from team_model   import TeamModel
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-# ── Args ──────────────────────────────────────────────────────
+
+# -- Args ------------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--predict-only", action="store_true")
 parser.add_argument("--date", type=str, default=None)
@@ -39,12 +43,12 @@ print("="*70)
 print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"  Mode: {'PREDICT ONLY' if args.predict_only else 'RETRAIN + PREDICT'}")
 
-# ── Connect ───────────────────────────────────────────────────
+# -- Connect ---------------------------------------------------
 print("\nConnecting to MotherDuck...")
 con = get_connection()
 print("Connected!")
 
-# ── Step 1: Train / Load models ───────────────────────────────
+# -- Step 1: Train / Load models -------------------------------
 player_model = PlayerModel()
 team_model   = TeamModel()
 
@@ -64,7 +68,7 @@ else:
         print("  Run without --predict-only first to train models")
         sys.exit(1)
 
-# ── Step 2: Update actual results ────────────────────────────
+# -- Step 2: Update actual results ----------------------------
 print("\n" + "-"*50)
 print("STEP 2: UPDATING ACTUAL RESULTS")
 print("-"*50)
@@ -87,13 +91,14 @@ for pred_id, game_id, home_id, away_id, pred_winner, pred_home, pred_away in pen
         FROM Games
         WHERE GameID = {game_id}
           AND HomeScore IS NOT NULL
+          AND AwayScore IS NOT NULL
     """).fetchone()
 
     if not result:
         continue
 
-    actual_home = int(result[0])
-    actual_away = int(result[1])
+    actual_home = int(result[0] or 0)
+    actual_away = int(result[1] or 0)
     actual_ot   = bool(result[2])
 
     home_name = con.execute(
@@ -119,14 +124,14 @@ for pred_id, game_id, home_id, away_id, pred_winner, pred_home, pred_away in pen
           actual_ot, ml_correct, bool(ml_correct)])
 
     result_str  = f"{actual_away}-{actual_home}" + (" (OT)" if actual_ot else "")
-    correct_str = "✓" if ml_correct else "✗"
+    correct_str = "OK" if ml_correct else "X"
     print(f"  {correct_str} {away_name} @ {home_name}: {result_str} "
           f"(predicted: {pred_winner})")
     updated += 1
 
 print(f"  Updated: {updated} games")
 
-# ── Step 3: Predict today's games ────────────────────────────
+# -- Step 3: Predict today's games ----------------------------
 print("\n" + "-"*50)
 print("STEP 3: PREDICTING TODAY'S GAMES")
 print("-"*50)
@@ -141,7 +146,8 @@ try:
     yesterday = target_date - __import__('datetime').timedelta(days=1)
     result = subprocess.run(
         [sys.executable, "update_player_accuracy.py"],
-        capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__))
+        capture_output=True, text=True, encoding='utf-8', errors='replace',
+        cwd=os.path.dirname(os.path.abspath(__file__))
     )
     if result.stdout:
         print(result.stdout[-500:])  # last 500 chars
@@ -228,26 +234,26 @@ else:
         if away_b2b: b2b_flags.append(f"{away_name} B2B")
         b2b_str = f" | ⚠ {', '.join(b2b_flags)}" if b2b_flags else ""
 
-        print(f"\n    ┌──────────────────────────────────────────")
-        print(f"    │  {away_name} @ {home_name}{b2b_str}")
-        print(f"    │  Winner:  {winner} ({conf:.1%})")
-        print(f"    │  Score:   {away_name} {ascore} - {home_name} {hscore}")
-        print(f"    │  OT:      {ot_prob:.1%}")
-        print(f"    │  HomeIce: {team_pred['homeice_diff']:+.3f}  "
+        print(f"\n    +------------------------------------------")
+        print(f"    |  {away_name} @ {home_name}{b2b_str}")
+        print(f"    |  Winner:  {winner} ({conf:.1%})")
+        print(f"    |  Score:   {away_name} {ascore} - {home_name} {hscore}")
+        print(f"    |  OT:      {ot_prob:.1%}")
+        print(f"    |  HomeIce: {team_pred['homeice_diff']:+.3f}  "
               f"xGF: {team_pred['xGF_diff']:+.2f}  "
               f"GSAX: {team_pred['GSAX_diff']:+.3f}")
-        print(f"    │  Proj goals: {home_name} {home_proj:.2f} | "
+        print(f"    |  Proj goals: {home_name} {home_proj:.2f} | "
               f"{away_name} {away_proj:.2f}")
-        print(f"    ├─ Top Players ────────────────────────────")
+        print(f"    +- Top Players ----------------------------")
         for p in (home_players[:5] + away_players[:5]):
             side = "H" if any(
                 pp["player_id"] == p["player_id"] for pp in home_players
             ) else "A"
-            print(f"    │  [{side}] {p['player_name']:24} "
+            print(f"    |  [{side}] {p['player_name']:24} "
                   f"G:{p['goal_prob']:.0%} "
                   f"A:{p['assist_prob']:.0%} "
                   f"P:{p['point_prob']:.0%}")
-        print(f"    └──────────────────────────────────────────")
+        print(f"    +------------------------------------------")
 
         # Write to Predictions table
         winner_team_id = home_id if team_pred["winner_is_home"] else away_id
@@ -306,7 +312,7 @@ else:
 
     print(f"\n  Predictions made: {predictions_made}")
 
-# ── Step 4: Accuracy summary ──────────────────────────────────
+# -- Step 4: Accuracy summary ----------------------------------
 print("\n" + "-"*50)
 print("STEP 4: ACCURACY SUMMARY")
 print("-"*50)

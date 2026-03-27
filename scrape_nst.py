@@ -81,7 +81,7 @@ TEAM_NAME_MAP = {
     "Winnipeg Jets":          "Winnipeg Jets",
 }
 
-# ── Helpers ──────────────────────────────────────────────────
+# -- Helpers --------------------------------------------------
 def safe_int(val):
     try:
         return int(str(val).replace(",", "")) if val and str(val).strip() not in ("", "-") else None
@@ -136,7 +136,7 @@ def build_lookups(con):
             by_name[r[1].lower()] = r[0]
     return team_lookup, by_name_team, by_name
 
-# ── Scrape Teams ─────────────────────────────────────────────
+# -- Scrape Teams ---------------------------------------------
 def scrape_teams(season, con, params):
     print(f"\n{'='*55}")
     print(f"Scraping team stats — {season}")
@@ -195,7 +195,7 @@ def scrape_teams(season, con, params):
             print(f"  [ERROR] {team_name}: {e}")
     print(f"\n  Teams inserted: {inserted} | No match: {no_match}")
 
-# ── Scrape Players ────────────────────────────────────────────
+# -- Scrape Players --------------------------------------------
 def scrape_players(season, con, params):
     print(f"\n{'='*55}")
     print(f"Scraping player stats — {season}")
@@ -276,7 +276,7 @@ def scrape_players(season, con, params):
             print(f"  [ERROR] {name} ({team}): {e}")
     print(f"\n  Players inserted: {inserted} | No match: {no_match}")
 
-# ── Scrape Goalies ────────────────────────────────────────────
+# -- Scrape Goalies --------------------------------------------
 def scrape_goalies(season, con, params):
     print(f"\n{'='*55}")
     print(f"Scraping goalie stats — {season}")
@@ -328,7 +328,7 @@ def scrape_goalies(season, con, params):
             print(f"  [ERROR] {name} ({team}): {e}")
     print(f"\n  Goalies inserted: {inserted} | No match: {no_match}")
 
-# ── Main ─────────────────────────────────────────────────────
+# -- Main -----------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--season", required=True, help="Season: 2025-26, 2024-25, or 'all'")
 args = parser.parse_args()

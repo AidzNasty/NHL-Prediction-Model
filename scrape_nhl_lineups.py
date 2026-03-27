@@ -63,7 +63,7 @@ print(f"Connecting to MotherDuck: {DB}...")
 con = duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 print("Connected!\n")
 
-# ── Build player lookups ──────────────────────────────────────
+# -- Build player lookups --------------------------------------
 # NHL API uses their own player IDs — we need to map to our PlayerIDs
 # Try matching by NHL API ID first, then fall back to name matching
 print("Building player lookups...")
@@ -79,6 +79,10 @@ players = con.execute("""
 
 # Name-based lookup (normalized)
 import unicodedata
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 def normalize(s):
     if not s:
         return ""
@@ -96,7 +100,7 @@ for pid, first, last, full, abbrev in players:
 
 print(f"  {len(players)} active players loaded")
 
-# ── Get today's games ─────────────────────────────────────────
+# -- Get today's games -----------------------------------------
 today = date.today()
 print(f"\nFetching schedule for {today}...")
 
@@ -116,7 +120,7 @@ for week in schedule.get("gameWeek", []):
 
 print(f"  {len(games_today)} games today")
 
-# ── Process each game ─────────────────────────────────────────
+# -- Process each game -----------------------------------------
 total_updated  = 0
 total_starters = 0
 
@@ -150,12 +154,8 @@ for game in games_today:
         if not side_data:
             continue
 
-        # Map NHL API abbrev to DB abbrev
-        abbrev_map = {
-            "NJD": "N.J", "SJS": "S.J", "TBL": "T.B",
-            "LAK": "L.A", "VGK": "VGK", "UTA": "UTA",
-        }
-        db_abbrev = abbrev_map.get(abbrev, abbrev)
+        # DB Teams table uses the same abbreviations as the NHL API
+        db_abbrev = abbrev
 
         team_row = con.execute(f"""
             SELECT TeamID FROM Teams
@@ -174,23 +174,36 @@ for game in games_today:
 
         team_id = team_row[0]
 
+        # Identify starting goalie for LIVE/FINAL games by highest TOI
+        # (starter=True only set during PRE state)
+        def toi_seconds(toi_str):
+            if not toi_str or toi_str == "00:00":
+                return 0
+            try:
+                m, s = toi_str.split(":")
+                return int(m) * 60 + int(s)
+            except Exception:
+                return 0
+
+        goalies = side_data.get("goalies", [])
+        toi_starter_name = None
+        if goalies and state in ("LIVE", "OFF", "FINAL", "CRIT"):
+            best = max(goalies, key=lambda g: toi_seconds(g.get("toi", "00:00")))
+            if toi_seconds(best.get("toi", "00:00")) > 0:
+                toi_starter_name = best.get("name", {}).get("default", "")
+
         # Get all dressed players
         dressed_ids = set()
         all_groups  = (
             [(p, "Active") for p in side_data.get("forwards", [])] +
             [(p, "Active") for p in side_data.get("defense",  [])] +
-            [(p, "Active") for p in side_data.get("goalies",  [])]
+            [(p, "Active") for p in goalies]
         )
 
         for p_data, status in all_groups:
             api_name = p_data.get("name", {}).get("default", "")
-            # API name format is "F. LastName" — expand to full
-            # Try to get full name from sweater number lookup
-            sweater = p_data.get("sweaterNumber")
-            nhl_pid = p_data.get("playerId")
 
             # Normalize the abbreviated name for matching
-            # "J. Swayman" → try to find Swayman on this team
             name_parts = api_name.replace(".", "").split()
             last_name  = name_parts[-1] if name_parts else ""
             norm_last  = normalize(last_name)
@@ -214,7 +227,11 @@ for game in games_today:
 
             dressed_ids.add(our_pid)
 
-            is_starter = p_data.get("starter", False)
+            # Determine status: use starter=True (PRE) or highest TOI (LIVE/FINAL)
+            is_starter = (
+                p_data.get("starter", False) or
+                (api_name == toi_starter_name and p_data.get("position") == "G")
+            )
             player_status = "Active"
             if is_starter and p_data.get("position") == "G":
                 player_status = "Starting Goalie"
@@ -226,34 +243,35 @@ for game in games_today:
                   AND CAST(StatusDate AS DATE) = '{today}'
             """).fetchone()
 
+            confirmed = state in ("LIVE", "OFF", "FINAL")
             if existing:
                 con.execute(f"""
                     UPDATE PlayerGameStatus SET
-                        Status     = ?,
-                        StatusDate = ?
+                        Status          = ?,
+                        StatusDate      = ?,
+                        ConfirmedLineup = ?
                     WHERE StatusID = {existing[0]}
-                """, [player_status, status_date])
+                """, [player_status, status_date, confirmed])
             else:
                 max_id = con.execute(
                     "SELECT COALESCE(MAX(StatusID), 0) FROM PlayerGameStatus"
                 ).fetchone()[0] + 1
                 con.execute("""
                     INSERT INTO PlayerGameStatus
-                    (StatusID, PlayerID, Status, StatusDate, Notes)
+                    (StatusID, PlayerID, Status, StatusDate, ConfirmedLineup)
                     VALUES (?, ?, ?, ?, ?)
-                """, [max_id, our_pid, player_status,
-                      status_date, f"Game {gid}"])
+                """, [max_id, our_pid, player_status, status_date, confirmed])
 
             total_updated += 1
             if player_status == "Starting Goalie":
                 total_starters += 1
-                print(f"    ⭐ STARTER: {api_name} ({abbrev})")
+                print(f"    [STARTER] {api_name} ({abbrev})")
 
         print(f"    {abbrev}: {len(dressed_ids)} dressed players found")
 
     time.sleep(0.5)
 
-# ── Summary ───────────────────────────────────────────────────
+# -- Summary ---------------------------------------------------
 total_statuses = con.execute(
     f"SELECT COUNT(*) FROM PlayerGameStatus WHERE CAST(StatusDate AS DATE) = '{today}'"
 ).fetchone()[0]

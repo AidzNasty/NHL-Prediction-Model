@@ -42,7 +42,7 @@ class PlayerModel:
         self.trained_date  = None
         self.training_players = 0
 
-    # ── Fast feature builder (no DB calls) ───────────────────
+    # -- Fast feature builder (no DB calls) -------------------
     def _build_feats(self, player, opp, opp_goalie, is_home):
         """Build feature dict entirely from in-memory DataFrames."""
         def v(row, key, default=0.0):
@@ -86,7 +86,7 @@ class PlayerModel:
             "is_b2b":  0,
         }
 
-    # ── Train ────────────────────────────────────────────────
+    # -- Train ------------------------------------------------
     def train(self, con):
         print("\n" + "="*60)
         print("TRAINING PLAYER MODEL")
@@ -174,7 +174,7 @@ class PlayerModel:
         print(f"\n  Player model trained on {self.training_players} samples")
         self.save()
 
-    # ── Predict single player ─────────────────────────────────
+    # -- Predict single player ---------------------------------
     def predict_player(self, con, player_id, opp_team_id,
                        is_home, season, b2b=False,
                        players_df=None, teams_df=None, goalies_df=None):
@@ -220,7 +220,7 @@ class PlayerModel:
             "point_prob":  round(point_prob,  3),
         }
 
-    # ── Predict full team ─────────────────────────────────────
+    # -- Predict full team -------------------------------------
     def predict_team_players(self, con, team_id, opp_team_id,
                               is_home, season, b2b=False, top_n=10,
                               players_df=None, teams_df=None, goalies_df=None):
@@ -284,7 +284,7 @@ class PlayerModel:
 
         return df.head(top_n).to_dict("records"), round(team_proj_goals, 2)
 
-    # ── Save / Load ───────────────────────────────────────────
+    # -- Save / Load -------------------------------------------
     def save(self, path=MODEL_FILE):
         with open(path, "wb") as f:
             pickle.dump({
@@ -296,7 +296,7 @@ class PlayerModel:
                 "trained_date":     self.trained_date,
                 "training_players": self.training_players,
             }, f)
-        print(f"  Player model saved → {path}")
+        print(f"  Player model saved -> {path}")
 
     def load(self, path=MODEL_FILE):
         with open(path, "rb") as f:
