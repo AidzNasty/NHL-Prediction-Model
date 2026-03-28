@@ -16,6 +16,7 @@ Usage:
 import os
 import sys
 import argparse
+import requests
 from datetime import datetime, date
 
 from db_features import (
@@ -24,12 +25,8 @@ from db_features import (
 )
 from player_model import PlayerModel
 from team_model   import TeamModel
-import sys
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-
-# -- Args ------------------------------------------------------
+# ── Args ──────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
 parser.add_argument("--predict-only", action="store_true")
 parser.add_argument("--date", type=str, default=None)
@@ -43,12 +40,12 @@ print("="*70)
 print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"  Mode: {'PREDICT ONLY' if args.predict_only else 'RETRAIN + PREDICT'}")
 
-# -- Connect ---------------------------------------------------
+# ── Connect ───────────────────────────────────────────────────
 print("\nConnecting to MotherDuck...")
 con = get_connection()
 print("Connected!")
 
-# -- Step 1: Train / Load models -------------------------------
+# ── Step 1: Train / Load models ───────────────────────────────
 player_model = PlayerModel()
 team_model   = TeamModel()
 
@@ -68,7 +65,7 @@ else:
         print("  Run without --predict-only first to train models")
         sys.exit(1)
 
-# -- Step 2: Update actual results ----------------------------
+# ── Step 2: Update actual results ────────────────────────────
 print("\n" + "-"*50)
 print("STEP 2: UPDATING ACTUAL RESULTS")
 print("-"*50)
@@ -131,7 +128,37 @@ for pred_id, game_id, home_id, away_id, pred_winner, pred_home, pred_away in pen
 
 print(f"  Updated: {updated} games")
 
-# -- Step 3: Predict today's games ----------------------------
+# ── NHL game state lookup ─────────────────────────────────────
+_nhl_game_states = None  # cache so we only fetch schedule once per run
+
+def get_game_states(target_date):
+    """Returns dict of {(home_abbrev, away_abbrev): state} for today's games.
+    States: PRE (not started), LIVE/CRIT (in progress), OFF/FINAL (finished).
+    """
+    global _nhl_game_states
+    if _nhl_game_states is not None:
+        return _nhl_game_states
+    _nhl_game_states = {}
+    try:
+        resp = requests.get(
+            f"https://api-web.nhle.com/v1/schedule/{target_date}",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return _nhl_game_states
+        for week in resp.json().get("gameWeek", []):
+            if str(week.get("date", ""))[:10] == str(target_date):
+                for g in week.get("games", []):
+                    home = g.get("homeTeam", {}).get("abbrev", "")
+                    away = g.get("awayTeam", {}).get("abbrev", "")
+                    state = g.get("gameState", "PRE")
+                    _nhl_game_states[(home, away)] = state
+    except Exception:
+        pass
+    return _nhl_game_states
+
+# ── Step 3: Predict today's games ────────────────────────────
 print("\n" + "-"*50)
 print("STEP 3: PREDICTING TODAY'S GAMES")
 print("-"*50)
@@ -187,15 +214,30 @@ else:
 
         print(f"\n  {away_name} @ {home_name}")
 
-        # Skip if already predicted
+        # Check NHL API game state — only re-predict PRE (not yet started) games.
+        # LIVE/CRIT = in progress, OFF/FINAL = finished → preserve those predictions.
+        home_abbrev = con.execute(f"SELECT Abbreviation FROM Teams WHERE TeamID = {home_id}").fetchone()[0]
+        away_abbrev = con.execute(f"SELECT Abbreviation FROM Teams WHERE TeamID = {away_id}").fetchone()[0]
+        game_states = get_game_states(target_date)
+        game_state  = game_states.get((home_abbrev, away_abbrev), "PRE")
+
         existing = con.execute(f"""
-            SELECT PredictionID FROM Predictions
+            SELECT PredictionID, ActualWinner FROM Predictions
             WHERE GameID = {game_id}
               AND PredictedWinner IS NOT NULL
         """).fetchone()
         if existing:
-            print(f"    Already predicted — skipping")
-            continue
+            if game_state in ("LIVE", "CRIT", "OFF", "FINAL"):
+                print(f"    Game is {game_state} — keeping existing prediction")
+                continue
+            if existing[1] is not None:
+                print(f"    Game already completed — skipping")
+                continue
+            # Game is PRE (not started) — delete and re-predict with fresh lineup data
+            pred_id = existing[0]
+            con.execute(f"DELETE FROM PlayerPredictions WHERE GameID = {game_id} AND PredictionDate = CAST('{target_date}' AS DATE)")
+            con.execute(f"DELETE FROM Predictions WHERE PredictionID = {pred_id}")
+            print(f"    Game is PRE — refreshing prediction with latest lineup data...")
 
         # Player predictions
         print(f"    Player predictions...")
@@ -234,26 +276,26 @@ else:
         if away_b2b: b2b_flags.append(f"{away_name} B2B")
         b2b_str = f" | ⚠ {', '.join(b2b_flags)}" if b2b_flags else ""
 
-        print(f"\n    +------------------------------------------")
-        print(f"    |  {away_name} @ {home_name}{b2b_str}")
-        print(f"    |  Winner:  {winner} ({conf:.1%})")
-        print(f"    |  Score:   {away_name} {ascore} - {home_name} {hscore}")
-        print(f"    |  OT:      {ot_prob:.1%}")
-        print(f"    |  HomeIce: {team_pred['homeice_diff']:+.3f}  "
+        print(f"\n    ┌──────────────────────────────────────────")
+        print(f"    │  {away_name} @ {home_name}{b2b_str}")
+        print(f"    │  Winner:  {winner} ({conf:.1%})")
+        print(f"    │  Score:   {away_name} {ascore} - {home_name} {hscore}")
+        print(f"    │  OT:      {ot_prob:.1%}")
+        print(f"    │  HomeIce: {team_pred['homeice_diff']:+.3f}  "
               f"xGF: {team_pred['xGF_diff']:+.2f}  "
               f"GSAX: {team_pred['GSAX_diff']:+.3f}")
-        print(f"    |  Proj goals: {home_name} {home_proj:.2f} | "
+        print(f"    │  Proj goals: {home_name} {home_proj:.2f} | "
               f"{away_name} {away_proj:.2f}")
-        print(f"    +- Top Players ----------------------------")
+        print(f"    ├─ Top Players ────────────────────────────")
         for p in (home_players[:5] + away_players[:5]):
             side = "H" if any(
                 pp["player_id"] == p["player_id"] for pp in home_players
             ) else "A"
-            print(f"    |  [{side}] {p['player_name']:24} "
+            print(f"    │  [{side}] {p['player_name']:24} "
                   f"G:{p['goal_prob']:.0%} "
                   f"A:{p['assist_prob']:.0%} "
                   f"P:{p['point_prob']:.0%}")
-        print(f"    +------------------------------------------")
+        print(f"    └──────────────────────────────────────────")
 
         # Write to Predictions table
         winner_team_id = home_id if team_pred["winner_is_home"] else away_id
@@ -312,7 +354,7 @@ else:
 
     print(f"\n  Predictions made: {predictions_made}")
 
-# -- Step 4: Accuracy summary ----------------------------------
+# ── Step 4: Accuracy summary ──────────────────────────────────
 print("\n" + "-"*50)
 print("STEP 4: ACCURACY SUMMARY")
 print("-"*50)
