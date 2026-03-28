@@ -785,42 +785,119 @@ elif page == "Hot & Cold Streaks":
             st.plotly_chart(fig_streak, use_container_width=True)
 
     with player_tab:
-        st.markdown("### PLAYER STREAKS")
-        st.info(
-            "Player game-by-game stats require the player gamelog table to be populated. "
-            "Run `scrape_player_gamelogs.py` to enable this feature. "
-            "Once available, this tab will show each player's goals, assists, and points "
-            "over their last 10 games."
-        )
+        st.markdown("### PLAYER STREAKS — LAST 10 GAMES")
 
-        # Show what we do have — recent player prediction actuals
-        st.markdown("### RECENT PLAYER PERFORMANCE (from predictions)")
-        st.caption("Players where we have actual results from completed games this season")
+        pcol1, pcol2 = st.columns(2)
+        pos_filter = pcol1.selectbox("Position", ["All Skaters", "Forwards", "Defense", "Goalies"], key="pos_streak")
+        team_list = q("SELECT TeamName FROM Teams ORDER BY TeamName")
+        team_options = ["All Teams"] + team_list["TeamName"].tolist()
+        team_filter = pcol2.selectbox("Team", team_options, key="team_streak")
 
-        player_actuals = q("""
+        pos_clause = ""
+        if pos_filter == "Forwards":
+            pos_clause = "AND pl.Position IN ('C','LW','RW','F')"
+        elif pos_filter == "Defense":
+            pos_clause = "AND pl.Position IN ('D')"
+        elif pos_filter == "Goalies":
+            pos_clause = "AND pl.Position IN ('G')"
+        else:
+            pos_clause = "AND pl.Position NOT IN ('G')"
+
+        team_clause = ""
+        if team_filter != "All Teams":
+            team_clause = f"AND t.TeamName = '{team_filter}'"
+
+        player_streaks = q(f"""
+            WITH ranked AS (
+                SELECT
+                    gl.PlayerID,
+                    gl.Goals, gl.Assists, gl.Points,
+                    gl.PlusMinus, gl.Shots, gl.TOI,
+                    ROW_NUMBER() OVER (PARTITION BY gl.PlayerID ORDER BY gl.GameDate DESC) AS rn
+                FROM PlayerGameLog gl
+                JOIN Players pl ON gl.PlayerID = pl.PlayerID
+                JOIN Teams t    ON pl.TeamID   = t.TeamID
+                WHERE gl.Season = '2025-26'
+                  {pos_clause}
+                  {team_clause}
+            )
             SELECT
-                pl.FirstName || ' ' || pl.LastName AS Player,
-                pl.Position AS Pos,
-                t.TeamName AS Team,
-                COUNT(*) AS Games,
-                SUM(pp.ActualGoals)   AS Goals,
-                SUM(pp.ActualAssists) AS Assists,
-                SUM(pp.ActualPoints)  AS Points,
-                ROUND(AVG(pp.ActualPoints), 2) AS "Pts/G"
-            FROM PlayerPredictions pp
-            JOIN Players pl ON pp.PlayerID = pl.PlayerID
-            JOIN Teams t    ON pl.TeamID   = t.TeamID
-            WHERE pp.ActualGoals IS NOT NULL
+                pl.FirstName || ' ' || pl.LastName          AS Player,
+                pl.Position                                  AS Pos,
+                t.TeamName                                   AS Team,
+                COUNT(*)                                     AS "GP (L10)",
+                SUM(r.Goals)                                 AS G,
+                SUM(r.Assists)                               AS A,
+                SUM(r.Points)                                AS PTS,
+                ROUND(SUM(r.Points) * 1.0 / COUNT(*), 2)    AS "Pts/G",
+                SUM(r.PlusMinus)                             AS "+/-",
+                SUM(r.Shots)                                 AS SOG,
+                ROUND(AVG(r.Goals) * 1.0, 2)                AS "G/G"
+            FROM ranked r
+            JOIN Players pl ON r.PlayerID = pl.PlayerID
+            JOIN Teams t    ON pl.TeamID  = t.TeamID
+            WHERE r.rn <= 10
+              {pos_clause}
+              {team_clause}
             GROUP BY pl.PlayerID, pl.FirstName, pl.LastName, pl.Position, t.TeamName
-            HAVING COUNT(*) >= 1
-            ORDER BY SUM(pp.ActualPoints) DESC
-            LIMIT 50
+            HAVING COUNT(*) >= 5
+            ORDER BY SUM(r.Points) DESC
+            LIMIT 100
         """)
 
-        if player_actuals.empty:
-            st.info("No player actuals yet. Run `update_player_accuracy.py` after games complete.")
+        if player_streaks.empty:
+            st.info("No player gamelog data found for the selected filters.")
         else:
-            st.dataframe(player_actuals, use_container_width=True, hide_index=True)
+            def player_tier(pts):
+                if pts >= 12:  return "🔥 On Fire"
+                elif pts >= 8: return "🟢 Hot"
+                elif pts >= 5: return "🟡 Average"
+                elif pts >= 3: return "🟠 Cool"
+                else:          return "🧊 Cold"
+
+            player_streaks["Streak"] = player_streaks["PTS"].apply(player_tier)
+
+            # Summary metrics
+            if not player_streaks.empty:
+                top = player_streaks.iloc[0]
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Hottest Skater", top["Player"], f"{int(top['G'])}G {int(top['A'])}A {int(top['PTS'])}PTS last 10")
+                c2.metric("Avg Pts/G (L10)", f"{player_streaks['Pts/G'].mean():.2f}")
+                c3.metric("Players Shown", len(player_streaks))
+
+            st.divider()
+
+            st.dataframe(
+                player_streaks[["Player", "Pos", "Team", "Streak", "GP (L10)", "G", "A", "PTS", "Pts/G", "+/-", "SOG"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.divider()
+
+            # Bar chart — top 25 by points in last 10
+            st.markdown("### TOP 25 SKATERS — POINTS IN LAST 10 GAMES")
+            top25 = player_streaks.head(25).copy()
+            top25["Label"] = top25["Player"] + " (" + top25["Team"].str[:3] + ")"
+
+            fig_p = px.bar(
+                top25.sort_values("PTS", ascending=True),
+                x="PTS", y="Label",
+                orientation="h",
+                color="PTS",
+                color_continuous_scale=["#3B82F6", "#F59E0B", "#10B981", "#EF4444"],
+                text="PTS",
+            )
+            fig_p.update_layout(
+                paper_bgcolor="#0A0E1A", plot_bgcolor="#111827",
+                font=dict(color="#F9FAFB"),
+                xaxis=dict(gridcolor="#1F2937", title="Points"),
+                yaxis=dict(gridcolor="#1F2937", title=""),
+                height=700, margin=dict(t=20, l=200),
+                coloraxis_showscale=False,
+            )
+            fig_p.update_traces(textposition="outside")
+            st.plotly_chart(fig_p, use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 6 — STATS GUIDE
