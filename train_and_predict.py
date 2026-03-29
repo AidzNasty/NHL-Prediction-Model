@@ -17,6 +17,8 @@ import os
 import sys
 import argparse
 import requests
+
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from datetime import datetime, date
 
 from db_features import (
@@ -274,28 +276,28 @@ else:
         b2b_flags = []
         if home_b2b: b2b_flags.append(f"{home_name} B2B")
         if away_b2b: b2b_flags.append(f"{away_name} B2B")
-        b2b_str = f" | ⚠ {', '.join(b2b_flags)}" if b2b_flags else ""
+        b2b_str = f" | !! {', '.join(b2b_flags)}" if b2b_flags else ""
 
-        print(f"\n    ┌──────────────────────────────────────────")
-        print(f"    │  {away_name} @ {home_name}{b2b_str}")
-        print(f"    │  Winner:  {winner} ({conf:.1%})")
-        print(f"    │  Score:   {away_name} {ascore} - {home_name} {hscore}")
-        print(f"    │  OT:      {ot_prob:.1%}")
-        print(f"    │  HomeIce: {team_pred['homeice_diff']:+.3f}  "
+        print(f"\n    +------------------------------------------")
+        print(f"    |  {away_name} @ {home_name}{b2b_str}")
+        print(f"    |  Winner:  {winner} ({conf:.1%})")
+        print(f"    |  Score:   {away_name} {ascore} - {home_name} {hscore}")
+        print(f"    |  OT:      {ot_prob:.1%}")
+        print(f"    |  HomeIce: {team_pred['homeice_diff']:+.3f}  "
               f"xGF: {team_pred['xGF_diff']:+.2f}  "
               f"GSAX: {team_pred['GSAX_diff']:+.3f}")
-        print(f"    │  Proj goals: {home_name} {home_proj:.2f} | "
+        print(f"    |  Proj goals: {home_name} {home_proj:.2f} | "
               f"{away_name} {away_proj:.2f}")
-        print(f"    ├─ Top Players ────────────────────────────")
+        print(f"    +-- Top Players ----------------------------")
         for p in (home_players[:5] + away_players[:5]):
             side = "H" if any(
                 pp["player_id"] == p["player_id"] for pp in home_players
             ) else "A"
-            print(f"    │  [{side}] {p['player_name']:24} "
+            print(f"    |  [{side}] {p['player_name']:24} "
                   f"G:{p['goal_prob']:.0%} "
                   f"A:{p['assist_prob']:.0%} "
                   f"P:{p['point_prob']:.0%}")
-        print(f"    └──────────────────────────────────────────")
+        print(f"    +------------------------------------------")
 
         # Write to Predictions table
         winner_team_id = home_id if team_pred["winner_is_home"] else away_id
