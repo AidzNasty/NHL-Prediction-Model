@@ -45,24 +45,35 @@ st.markdown("""
     --card:  #111827;
     --border:#1F2937;
     --text:  #F9FAFB;
-    --muted: #9CA3AF;
+    --muted: #CBD5E1;
 }
 
+/* ── Base ── */
 .stApp { background-color: var(--dark); color: var(--text); }
 
+/* Make sure all general text is light */
+.stApp p, .stApp li, .stApp span, .stApp div,
+.stApp .stMarkdown, .stApp .stText { color: var(--text); }
+
+/* ── Sidebar ── */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0B1628 0%, #0A0E1A 100%);
     border-right: 1px solid var(--border);
 }
+section[data-testid="stSidebar"] * { color: var(--text) !important; }
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] small { color: var(--muted) !important; }
 
+/* ── Headings ── */
 h1 { font-family: 'Bebas Neue', cursive !important;
      color: #00B4D8 !important; font-size: 2.8rem !important;
      letter-spacing: 3px !important; }
 h2 { font-family: 'Bebas Neue', cursive !important;
      color: #F9FAFB !important; font-size: 1.6rem !important; }
 h3 { font-family: 'Bebas Neue', cursive !important;
-     color: #9CA3AF !important; font-size: 1.2rem !important; }
+     color: #E2E8F0 !important; font-size: 1.2rem !important; }
 
+/* ── Metrics ── */
 div[data-testid="stMetric"] {
     background: #111827;
     border: 1px solid #1F2937;
@@ -70,12 +81,46 @@ div[data-testid="stMetric"] {
     padding: 16px;
 }
 div[data-testid="stMetricValue"] { color: #00B4D8 !important; font-family: 'Bebas Neue', cursive !important; font-size: 2rem !important; }
-div[data-testid="stMetricLabel"] { color: #9CA3AF !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 1px; }
+div[data-testid="stMetricLabel"] { color: var(--muted) !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 1px; }
+div[data-testid="stMetricDelta"] { color: #94A3B8 !important; }
 
+/* ── Dataframe ── */
 div[data-testid="stDataFrame"] { background: #111827; border-radius: 8px; }
+div[data-testid="stDataFrame"] * { color: #F9FAFB !important; }
 
-.stRadio > label { color: #9CA3AF !important; }
-.stSelectbox > label { color: #9CA3AF !important; }
+/* ── Captions ── */
+.stCaption, div[data-testid="stCaptionContainer"],
+small, .stApp [data-testid="caption"] { color: var(--muted) !important; }
+
+/* ── Widget labels ── */
+.stRadio > label,
+.stRadio label span,
+.stSelectbox > label,
+.stSlider > label,
+.stMultiSelect > label { color: var(--muted) !important; }
+
+/* Radio button options and selectbox text */
+.stRadio div[role="radiogroup"] label,
+.stRadio div[role="radiogroup"] span { color: #F9FAFB !important; }
+
+/* ── Tabs ── */
+button[data-baseweb="tab"] { color: var(--muted) !important; }
+button[data-baseweb="tab"][aria-selected="true"] { color: #00B4D8 !important; border-bottom-color: #00B4D8 !important; }
+
+/* ── Alerts / info boxes ── */
+div[data-testid="stAlert"] { color: #F9FAFB !important; }
+div[data-testid="stAlert"] * { color: #F9FAFB !important; }
+
+/* ── Expanders ── */
+div[data-testid="stExpander"] summary { color: #F9FAFB !important; }
+div[data-testid="stExpander"] summary:hover { color: #00B4D8 !important; }
+div[data-testid="stExpander"] div { color: #E2E8F0 !important; }
+
+/* ── Code blocks ── */
+.stCode, code { color: #7DD3FC !important; background: #1E293B !important; }
+
+/* ── Dividers ── */
+hr { border-color: #1F2937 !important; }
 </style>
 """, unsafe_allow_html=True)
 
