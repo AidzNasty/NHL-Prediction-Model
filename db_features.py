@@ -92,7 +92,8 @@ def get_team_features(con, season="2025-26"):
             -- Faceoff / Giveaway / Takeaway tendencies
             ts.Team_FaceoffWinPct,
             ts.Team_Giveaways_Per_Game,
-            ts.Team_Takeaways_Per_Game
+            ts.Team_Takeaways_Per_Game,
+            (ts.GF - ts.GA) AS GoalDiff
         FROM TeamStandings ts
         JOIN Teams t ON ts.TeamID = t.TeamID
         WHERE ts.Season = '{season}'
@@ -365,6 +366,32 @@ def _default_rolling():
     }
 
 
+def get_team_streak(con, team_id, season="2025-26"):
+    """
+    Returns current consecutive win/loss streak as a signed integer.
+    +5 = W5 (won last 5), -3 = L3 (lost last 3).
+    """
+    rows = con.execute(f"""
+        SELECT CASE WHEN WinnerTeamID = {team_id} THEN 1 ELSE -1 END AS result
+        FROM Games
+        WHERE (HomeTeamID = {team_id} OR AwayTeamID = {team_id})
+          AND HomeScore IS NOT NULL
+          AND Season = '{season}'
+        ORDER BY GameDate DESC
+        LIMIT 20
+    """).fetchall()
+    if not rows:
+        return 0
+    first = rows[0][0]
+    count = 0
+    for (r,) in rows:
+        if r == first:
+            count += 1
+        else:
+            break
+    return first * count  # +5 = W5, -3 = L3
+
+
 def calc_homeice_differential(home_team_row, away_team_row):
     """
     Preserves the HomeIce formula from the original Excel model
@@ -451,6 +478,10 @@ def build_game_features(con, home_team_id, away_team_id, season,
     today_str = str(date.today())
     home_rolling = get_team_rolling_stats(con, home_team_id, today_str)
     away_rolling = get_team_rolling_stats(con, away_team_id, today_str)
+
+    # Current streak
+    home_streak = get_team_streak(con, home_team_id)
+    away_streak = get_team_streak(con, away_team_id)
 
     # Build feature dict
     def val(series, key, default=0.0):
@@ -557,6 +588,16 @@ def build_game_features(con, home_team_id, away_team_id, season,
         # Rolling differentials — hot team vs cold team
         "rolling_win_pct_diff":   home_rolling["rolling_win_pct"] - away_rolling["rolling_win_pct"],
         "rolling_goal_diff_diff": home_rolling["rolling_goal_diff"] - away_rolling["rolling_goal_diff"],
+
+        # Goal differential (GF - GA season totals)
+        "home_goal_diff":         val(home, "GoalDiff", 0.0),
+        "away_goal_diff":         val(away, "GoalDiff", 0.0),
+        "goal_diff_differential": val(home, "GoalDiff", 0.0) - val(away, "GoalDiff", 0.0),
+
+        # Consecutive win/loss streak (+5=W5, -3=L3)
+        "home_streak":            float(home_streak),
+        "away_streak":            float(away_streak),
+        "streak_differential":    float(home_streak - away_streak),
     }
 
     return features

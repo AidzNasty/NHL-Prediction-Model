@@ -164,6 +164,14 @@ class TeamModel:
             "away_rolling_shots":       28.0,
             "rolling_win_pct_diff":     0.0,
             "rolling_goal_diff_diff":   0.0,
+            # Goal differential — populated per game in train loop
+            "home_goal_diff":           v(home, "GoalDiff", 0.0),
+            "away_goal_diff":           v(away, "GoalDiff", 0.0),
+            "goal_diff_differential":   v(home, "GoalDiff", 0.0) - v(away, "GoalDiff", 0.0),
+            # Streak — populated per game in train loop
+            "home_streak":              0.0,
+            "away_streak":              0.0,
+            "streak_differential":      0.0,
         }
 
     # -- Train ------------------------------------------------
@@ -271,6 +279,30 @@ class TeamModel:
             }
         print(f"    {len(rolling_cache)} team/date combinations loaded")
 
+        # Pre-compute streak before each game (consecutive W/L going into that game)
+        print("  Pre-computing team streaks (batch)...")
+        streak_results = con.execute("""
+            SELECT GameDate, HomeTeamID AS TeamID,
+                   CASE WHEN HomeScore > AwayScore THEN 1 ELSE -1 END AS result
+            FROM Games WHERE HomeScore IS NOT NULL
+            UNION ALL
+            SELECT GameDate, AwayTeamID,
+                   CASE WHEN AwayScore > HomeScore THEN 1 ELSE -1 END
+            FROM Games WHERE HomeScore IS NOT NULL
+            ORDER BY TeamID, GameDate ASC
+        """).df()
+
+        streak_cache = {}
+        for team_id, team_df in streak_results.groupby("TeamID"):
+            team_df = team_df.sort_values("GameDate")
+            streak = 0
+            for _, row in team_df.iterrows():
+                date_str = str(row["GameDate"])[:10]
+                streak_cache[(int(team_id), date_str)] = streak  # streak BEFORE this game
+                r = int(row["result"])
+                streak = (streak + 1 if streak > 0 else 1) if r == 1 else (streak - 1 if streak < 0 else -1)
+        print(f"    {len(streak_cache)} team/date streak entries")
+
         for _, game in games.iterrows():
             home_id  = int(game["HomeTeamID"])
             away_id  = int(game["AwayTeamID"])
@@ -317,6 +349,13 @@ class TeamModel:
             feats["away_rolling_shots"]       = away_r["rolling_shots"]
             feats["rolling_win_pct_diff"]     = home_r["rolling_win_pct"] - away_r["rolling_win_pct"]
             feats["rolling_goal_diff_diff"]   = home_r["rolling_goal_diff"] - away_r["rolling_goal_diff"]
+
+            # Streak features
+            home_s = float(streak_cache.get((home_id, game_date), 0))
+            away_s = float(streak_cache.get((away_id, game_date), 0))
+            feats["home_streak"]         = home_s
+            feats["away_streak"]         = away_s
+            feats["streak_differential"] = home_s - away_s
 
             # Add player projections using pre-loaded data
             if player_model is not None:

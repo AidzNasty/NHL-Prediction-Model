@@ -109,6 +109,51 @@ def has_actual_cols():
 
 HAS_ACTUALS = has_actual_cols()
 
+@st.cache_data(ttl=300)
+def get_all_streaks():
+    """Returns {TeamID: streak_int} for current season. +5=W5, -3=L3."""
+    try:
+        con = get_con()
+        rows = con.execute("""
+            SELECT TeamID, result FROM (
+                SELECT HomeTeamID AS TeamID,
+                       CASE WHEN WinnerTeamID = HomeTeamID THEN 1 ELSE -1 END AS result,
+                       GameDate
+                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2025-26'
+                UNION ALL
+                SELECT AwayTeamID,
+                       CASE WHEN WinnerTeamID = AwayTeamID THEN 1 ELSE -1 END,
+                       GameDate
+                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2025-26'
+            ) ORDER BY TeamID, GameDate DESC
+        """).df()
+        con.close()
+        streaks = {}
+        for team_id, grp in rows.groupby("TeamID"):
+            results = grp["result"].tolist()
+            if not results:
+                streaks[int(team_id)] = 0
+                continue
+            first = results[0]
+            count = 0
+            for r in results:
+                if r == first:
+                    count += 1
+                else:
+                    break
+            streaks[int(team_id)] = first * count
+        return streaks
+    except:
+        return {}
+
+def fmt_streak(n):
+    """Format numeric streak as W5 or L3."""
+    if n > 0:
+        return f"W{n}"
+    elif n < 0:
+        return f"L{abs(n)}"
+    return "—"
+
 # -- Sidebar ---------------------------------------------------
 with st.sidebar:
     st.markdown("# 🏒 NHL PREDICTIONS")
@@ -154,6 +199,7 @@ if page == "Today's Games":
     st.title("TODAY'S GAMES")
     today = date.today()
     st.caption(today.strftime("%A, %B %d, %Y"))
+    streaks = get_all_streaks()
 
     preds = q(f"""
         SELECT
@@ -206,20 +252,25 @@ if page == "Today's Games":
             away_b2b= bool(pred["AwayB2B"])
             home_proj= float(pred["HomeProj"])
             away_proj= float(pred["AwayProj"])
-            game_id = int(pred["GameID"])
+            game_id  = int(pred["GameID"])
+            home_id  = int(pred["HomeTeamID"])
+            away_id  = int(pred["AwayTeamID"])
+            home_strk= fmt_streak(streaks.get(home_id, 0))
+            away_strk= fmt_streak(streaks.get(away_id, 0))
 
             # Card container
             with st.container(border=True):
                 # Header row
                 col_title, col_conf = st.columns([3, 1])
                 with col_title:
-                    st.markdown(
-                        f"### {away} @ {home}",
-                    )
+                    st.markdown(f"### {away} @ {home}")
+                    badges = []
                     if home_b2b:
-                        st.markdown(f"🟠 **{home} on B2B**")
+                        badges.append(f"🟠 **{home} on B2B**")
                     if away_b2b:
-                        st.markdown(f"🟠 **{away} on B2B**")
+                        badges.append(f"🟠 **{away} on B2B**")
+                    badges.append(f"`{home}` streak: **{home_strk}** &nbsp;|&nbsp; `{away}` streak: **{away_strk}**")
+                    st.markdown("  \n".join(badges), unsafe_allow_html=True)
 
                 with col_conf:
                     conf_color = "🟢" if conf >= 65 else "🟡" if conf >= 55 else "🔴"
@@ -588,7 +639,8 @@ elif page == "Team Stats":
             ROUND(gg.total_GA * 1.0 / NULLIF(gg.total_GP, 0), 2) AS "GA/G",
             ROUND(ts.HomeWinPct * 100, 1)                     AS "Home W%",
             ROUND(ts.AwayWinPct * 100, 1)                     AS "Away W%",
-            ROUND(ts.Team_FaceoffWinPct, 1)                   AS "FO%"
+            ROUND(ts.Team_FaceoffWinPct, 1)                   AS "FO%",
+            (ts.GF - ts.GA)                                   AS "Goal Diff"
         FROM TeamStandings ts
         JOIN Teams t ON ts.TeamID = t.TeamID
         LEFT JOIN game_goals gg ON ts.TeamID = gg.TeamID
@@ -606,7 +658,7 @@ elif page == "Team Stats":
         )
 
         cols_map = {
-            "Standings":  ["Team", "GP", "W", "L", "OTL", "Points", "Point%"],
+            "Standings":  ["Team", "GP", "W", "L", "OTL", "Points", "Point%", "Goal Diff"],
             "Possession": ["Team", "CF%", "FF%", "xGF%", "HDCF%", "PDO"],
             "Scoring":    ["Team", "GF/G", "GA/G", "SH%", "SV%", "FO%"],
             "Home/Away":  ["Team", "Home W%", "Away W%", "GF/G", "GA/G"],
@@ -651,6 +703,7 @@ elif page == "Hot & Cold Streaks":
     streak_tab, player_tab = st.tabs(["Team Streaks", "Player Streaks"])
 
     with streak_tab:
+        all_streaks = get_all_streaks()
         teams_streak = q("""
             WITH team_games AS (
                 SELECT
@@ -681,44 +734,35 @@ elif page == "Hot & Cold Streaks":
                 FROM team_games
                 WHERE rn <= 10
                 GROUP BY TeamID
-            ),
-            streak_calc AS (
-                SELECT
-                    TeamID,
-                    CASE WHEN WinnerTeamID = TeamID THEN 'W' ELSE 'L' END AS last_result,
-                    ROW_NUMBER() OVER (PARTITION BY TeamID ORDER BY rn) AS seq,
-                    rn
-                FROM team_games WHERE rn <= 10
             )
             SELECT
+                t.TeamID,
                 t.TeamName AS Team,
                 l.W10, l.OTL10, l.L10,
                 l.GF_avg AS "GF/G (L10)",
                 l.GA_avg AS "GA/G (L10)",
+                (ts.GF - ts.GA) AS "Goal Diff",
                 CAST(l.LastGame AS DATE) AS "Last Game"
             FROM last10 l
             JOIN Teams t ON l.TeamID = t.TeamID
+            JOIN TeamStandings ts ON ts.TeamID = t.TeamID AND ts.Season = '2025-26'
             ORDER BY l.W10 DESC, l.OTL10 DESC
         """)
 
         if teams_streak.empty:
             st.info("No team streak data available.")
         else:
-            def streak_label(w):
+            def l10_tier(w):
                 if w >= 8:   return "🔥 On Fire"
                 elif w >= 6: return "🟢 Hot"
                 elif w == 5: return "🟡 Average"
                 elif w == 4: return "🟠 Cool"
                 else:        return "🧊 Cold"
 
-            def streak_color(w):
-                if w >= 8:   return "#EF4444"
-                elif w >= 6: return "#10B981"
-                elif w == 5: return "#F59E0B"
-                elif w == 4: return "#F97316"
-                else:        return "#3B82F6"
-
-            teams_streak["Streak"] = teams_streak["W10"].apply(streak_label)
+            teams_streak["Streak"] = teams_streak["TeamID"].apply(
+                lambda tid: fmt_streak(all_streaks.get(int(tid), 0))
+            )
+            teams_streak["Form (L10)"] = teams_streak["W10"].apply(l10_tier)
             teams_streak["Record (L10)"] = teams_streak.apply(
                 lambda r: f"{int(r['W10'])}-{int(r['L10'])}-{int(r['OTL10'])}", axis=1
             )
@@ -727,8 +771,10 @@ elif page == "Hot & Cold Streaks":
             hottest = teams_streak.iloc[0]
             coldest = teams_streak.iloc[-1]
             c1, c2, c3 = st.columns(3)
-            c1.metric("Hottest Team", hottest["Team"], f"{int(hottest['W10'])}-{int(hottest['L10'])}-{int(hottest['OTL10'])} last 10")
-            c2.metric("Coldest Team", coldest["Team"], f"{int(coldest['W10'])}-{int(coldest['L10'])}-{int(coldest['OTL10'])} last 10")
+            c1.metric("Hottest Team", hottest["Team"],
+                      f"{fmt_streak(all_streaks.get(int(hottest['TeamID']), 0))} | {int(hottest['W10'])}-{int(hottest['L10'])}-{int(hottest['OTL10'])} L10")
+            c2.metric("Coldest Team", coldest["Team"],
+                      f"{fmt_streak(all_streaks.get(int(coldest['TeamID']), 0))} | {int(coldest['W10'])}-{int(coldest['L10'])}-{int(coldest['OTL10'])} L10")
             c3.metric("League Avg Wins (L10)", f"{teams_streak['W10'].mean():.1f}")
 
             st.divider()
@@ -752,7 +798,7 @@ elif page == "Hot & Cold Streaks":
                 df_show = df_show[df_show["W10"] <= 3]
 
             st.dataframe(
-                df_show[["Team", "Streak", "Record (L10)", "GF/G (L10)", "GA/G (L10)", "Last Game"]],
+                df_show[["Team", "Streak", "Form (L10)", "Record (L10)", "Goal Diff", "GF/G (L10)", "GA/G (L10)", "Last Game"]],
                 use_container_width=True,
                 hide_index=True,
             )
