@@ -77,13 +77,12 @@ div[data-testid="stDataFrame"] { background: #111827; border-radius: 8px; }
 .stRadio > label { color: #9CA3AF !important; }
 .stSelectbox > label { color: #9CA3AF !important; }
 
-/* Force all text inside selectbox widget to black */
-div[data-testid="stSelectbox"] * { color: #000000 !important; }
-/* Restore the label above the box to muted grey */
-div[data-testid="stSelectbox"] > label { color: #9CA3AF !important; }
+/* Selectbox selected value — target baseweb select directly */
+[data-baseweb="select"] * { color: #000000 !important; }
+[data-baseweb="select"] input { color: #000000 !important; }
 /* Dropdown options list */
-div[data-baseweb="popover"] li,
-div[data-baseweb="popover"] li span { color: #000000 !important; }
+[data-baseweb="menu"] * { color: #000000 !important; }
+[data-baseweb="popover"] * { color: #000000 !important; }
 </style>
 """, unsafe_allow_html=True)
 
