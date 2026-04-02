@@ -76,6 +76,13 @@ div[data-testid="stDataFrame"] { background: #111827; border-radius: 8px; }
 
 .stRadio > label { color: #9CA3AF !important; }
 .stSelectbox > label { color: #9CA3AF !important; }
+
+/* Dropdown selected value and option text — black for readability */
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] input,
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] li span,
+div[data-baseweb="popover"] ul li { color: #000000 !important; }
 </style>
 """, unsafe_allow_html=True)
 
