@@ -215,7 +215,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["Today's Games", "Player Props", "Model Accuracy", "Team Stats", "Hot & Cold Streaks", "Stats Guide"],
+        ["Today's Games", "Playoffs", "Player Props", "Model Accuracy", "Team Stats", "Hot & Cold Streaks", "Stats Guide"],
         label_visibility="collapsed"
     )
 
@@ -1150,3 +1150,276 @@ elif page == "Stats Guide":
             - Team standings
             - Season-level aggregates
             """)
+
+# ═══════════════════════════════════════════════════════════════
+# PAGE — PLAYOFFS
+# ═══════════════════════════════════════════════════════════════
+elif page == "Playoffs":
+    st.title("2025–26 NHL PLAYOFFS")
+    st.caption("First Round — Live Series Tracker & Predictions")
+
+    # ── Helper: series win probability ──────────────────────────
+    def series_win_prob(wins_a, wins_b, game_num, p_home, p_away):
+        """
+        Recursive P(home-ice team wins series).
+        game_num: next game to be played (1-7).
+        Home-ice team hosts games 1,2,5,7; away team hosts 3,4,6.
+        """
+        if wins_a >= 4: return 1.0
+        if wins_b >= 4: return 0.0
+        a_at_home = game_num in (1, 2, 5, 7)
+        p = p_home if a_at_home else p_away
+        return (p * series_win_prob(wins_a + 1, wins_b, game_num + 1, p_home, p_away) +
+                (1 - p) * series_win_prob(wins_a, wins_b + 1, game_num + 1, p_home, p_away))
+
+    # ── Load all 2025-26 playoff games ───────────────────────────
+    playoff_df = q("""
+        SELECT
+            g.GameID,
+            g.GameDate,
+            t1.TeamName  AS Away,    t1.TeamID AS AwayID,    t1.Abbreviation AS AwayAbbr,
+            t2.TeamName  AS Home,    t2.TeamID AS HomeID,    t2.Abbreviation AS HomeAbbr,
+            g.AwayScore, g.HomeScore,
+            t3.TeamName  AS Winner,  t3.TeamID AS WinnerID,
+            g.OvertimeFlag,
+            LEAST(t1.TeamID, t2.TeamID)    AS T1ID,
+            GREATEST(t1.TeamID, t2.TeamID) AS T2ID
+        FROM Games g
+        JOIN Teams t1 ON g.AwayTeamID = t1.TeamID
+        JOIN Teams t2 ON g.HomeTeamID = t2.TeamID
+        LEFT JOIN Teams t3 ON g.WinnerTeamID = t3.TeamID
+        WHERE g.GameType = 'Playoffs' AND g.Season = '2025-26'
+        ORDER BY g.GameDate
+    """)
+
+    # ── Load regular-season team strength ────────────────────────
+    strength_df = q("""
+        SELECT
+            ts.TeamID,
+            t.TeamName,
+            t.Conference,
+            t.Abbreviation,
+            ts.Point_Pct,
+            ts.xGF_Pct,
+            ts.GF,
+            ts.GA,
+            ts.GP,
+            ROUND(ts.GF * 1.0 / NULLIF(ts.GP, 0), 2) AS GF_per_G,
+            ROUND(ts.GA * 1.0 / NULLIF(ts.GP, 0), 2) AS GA_per_G
+        FROM TeamStandings ts
+        JOIN Teams t ON ts.TeamID = t.TeamID
+        WHERE ts.Season = '2025-26'
+    """)
+
+    if playoff_df.empty:
+        st.info("No 2025–26 playoff data found.")
+    else:
+        # Build strength lookup
+        strength = {}
+        for _, row in strength_df.iterrows():
+            strength[int(row["TeamID"])] = {
+                "name":     row["TeamName"],
+                "abbr":     row["Abbreviation"],
+                "conf":     row["Conference"],
+                "pt_pct":   float(row["Point_Pct"] or 0.5),
+                "xgf_pct":  float(row["xGF_Pct"] or 50) / 100,
+                "gf_pg":    float(row["GF_per_G"] or 3.0),
+                "ga_pg":    float(row["GA_per_G"] or 3.0),
+            }
+
+        # Group games by matchup pair
+        series_map = {}
+        for _, game in playoff_df.iterrows():
+            key = (int(game["T1ID"]), int(game["T2ID"]))
+            series_map.setdefault(key, []).append(game)
+
+        # Build series data
+        series_list = []
+        for key, games in series_map.items():
+            games_sorted = sorted(games, key=lambda g: g["GameDate"])
+            g1 = games_sorted[0]
+            home_ice_id   = int(g1["HomeID"])
+            away_seed_id  = int(g1["AwayID"])
+            home_ice_name = g1["Home"]
+            away_seed_name = g1["Away"]
+
+            # Count wins for each team
+            hi_wins = sum(1 for g in games_sorted
+                          if pd.notna(g["WinnerID"]) and int(g["WinnerID"]) == home_ice_id)
+            opp_wins = sum(1 for g in games_sorted
+                           if pd.notna(g["WinnerID"]) and int(g["WinnerID"]) == away_seed_id)
+
+            completed_games = [g for g in games_sorted if pd.notna(g["HomeScore"])]
+            total_played    = len(completed_games)
+            next_game_num   = total_played + 1
+
+            # Per-game win probability for home-ice team
+            hi_s   = strength.get(home_ice_id,  {"pt_pct": 0.5, "xgf_pct": 0.5})
+            opp_s  = strength.get(away_seed_id, {"pt_pct": 0.5, "xgf_pct": 0.5})
+            HOME_ICE_BONUS = 0.04
+            strength_adj = (hi_s["pt_pct"] - opp_s["pt_pct"]) * 0.25 + \
+                           (hi_s["xgf_pct"] - opp_s["xgf_pct"]) * 0.15
+            strength_adj = max(-0.20, min(0.20, strength_adj))
+
+            p_hi_home = min(0.82, max(0.18, 0.5 + strength_adj + HOME_ICE_BONUS))
+            p_hi_away = min(0.82, max(0.18, 0.5 + strength_adj - HOME_ICE_BONUS))
+
+            win_prob = series_win_prob(
+                hi_wins, opp_wins, next_game_num, p_hi_home, p_hi_away
+            ) if hi_wins < 4 and opp_wins < 4 else (1.0 if hi_wins == 4 else 0.0)
+
+            series_list.append({
+                "key":            key,
+                "home_ice_id":    home_ice_id,
+                "home_ice_name":  home_ice_name,
+                "opp_id":         away_seed_id,
+                "opp_name":       away_seed_name,
+                "hi_wins":        hi_wins,
+                "opp_wins":       opp_wins,
+                "total_played":   total_played,
+                "games":          games_sorted,
+                "win_prob_hi":    win_prob,
+                "win_prob_opp":   1.0 - win_prob,
+                "series_over":    hi_wins == 4 or opp_wins == 4,
+                "hi_abbr":        strength.get(home_ice_id, {}).get("abbr", ""),
+                "opp_abbr":       strength.get(away_seed_id, {}).get("abbr", ""),
+            })
+
+        # Sort: active series first (not over), then by largest win prob differential
+        series_list.sort(key=lambda s: (s["series_over"], -abs(s["win_prob_hi"] - 0.5)))
+
+        st.markdown("### FIRST ROUND SERIES")
+        st.divider()
+
+        # Display each series as a card
+        for s in series_list:
+            hi  = s["home_ice_name"]
+            opp = s["opp_name"]
+            hi_w  = s["hi_wins"]
+            opp_w = s["opp_wins"]
+            prob_hi  = s["win_prob_hi"]
+            prob_opp = s["win_prob_opp"]
+
+            if s["series_over"]:
+                if hi_w == 4:
+                    leader_str = f"**{hi}** wins series {hi_w}–{opp_w}"
+                    badge = "🏆"
+                else:
+                    leader_str = f"**{opp}** wins series {opp_w}–{hi_w}"
+                    badge = "🏆"
+            elif hi_w > opp_w:
+                leader_str = f"**{hi}** leads {hi_w}–{opp_w}"
+                badge = "🟢"
+            elif opp_w > hi_w:
+                leader_str = f"**{opp}** leads {opp_w}–{hi_w}"
+                badge = "🟡"
+            else:
+                leader_str = f"Series tied {hi_w}–{opp_w}"
+                badge = "⚪"
+
+            with st.expander(f"{badge}  {hi} vs {opp}  —  {leader_str}", expanded=True):
+                col_a, col_b, col_c = st.columns([2, 1, 2])
+
+                with col_a:
+                    st.markdown(f"#### {hi}")
+                    st.metric("Series Wins", hi_w)
+                    if not s["series_over"]:
+                        bar_pct = int(round(prob_hi * 100))
+                        st.progress(prob_hi)
+                        st.caption(f"Predicted series win: **{bar_pct}%**")
+                    else:
+                        st.caption("Home ice" if hi_w == 4 else "Eliminated")
+
+                with col_b:
+                    st.markdown("<div style='text-align:center;padding-top:40px;font-size:1.6rem;'>VS</div>",
+                                unsafe_allow_html=True)
+
+                with col_c:
+                    st.markdown(f"#### {opp}")
+                    st.metric("Series Wins", opp_w)
+                    if not s["series_over"]:
+                        bar_pct = int(round(prob_opp * 100))
+                        st.progress(prob_opp)
+                        st.caption(f"Predicted series win: **{bar_pct}%**")
+                    else:
+                        st.caption("Eliminated" if opp_w < 4 else "Winner")
+
+                # Game log
+                st.markdown("**Game Log**")
+                game_rows = []
+                gnum = 0
+                for g in s["games"]:
+                    gnum += 1
+                    if pd.notna(g["HomeScore"]):
+                        aw_s = int(g["AwayScore"])
+                        hm_s = int(g["HomeScore"])
+                        ot = " (OT)" if g["OvertimeFlag"] else ""
+                        w = g["Winner"] or "—"
+                        game_rows.append({
+                            "Game": f"G{gnum}",
+                            "Date": str(g["GameDate"]),
+                            "Away": g["Away"],
+                            "Home": g["Home"],
+                            "Score": f"{aw_s}–{hm_s}{ot}",
+                            "Winner": w,
+                        })
+                    else:
+                        game_rows.append({
+                            "Game": f"G{gnum}",
+                            "Date": str(g["GameDate"]),
+                            "Away": g["Away"],
+                            "Home": g["Home"],
+                            "Score": "—",
+                            "Winner": "Pending",
+                        })
+
+                if game_rows:
+                    st.dataframe(
+                        pd.DataFrame(game_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+        # ── Series Prediction Summary ─────────────────────────────
+        st.divider()
+        st.markdown("### SERIES WINNER PREDICTIONS")
+
+        east = []
+        west = []
+        for s in series_list:
+            hi_id   = s["home_ice_id"]
+            opp_id  = s["opp_id"]
+            pred_winner = s["home_ice_name"] if s["win_prob_hi"] >= 0.5 else s["opp_name"]
+            pred_prob   = max(s["win_prob_hi"], s["win_prob_opp"])
+            pred_conf_str = f"{int(pred_prob*100)}% confident"
+
+            row = {
+                "Matchup":        f"{s['home_ice_name']} vs {s['opp_name']}",
+                "Predicted Winner": pred_winner,
+                "Confidence":     pred_conf_str,
+                "Series":         f"{s['hi_wins']}–{s['opp_wins']}",
+            }
+
+            conf = strength.get(s["home_ice_id"], {}).get("conf", "Unknown")
+
+            if conf == "Eastern":
+                east.append(row)
+            else:
+                west.append(row)
+
+        col_east, col_west = st.columns(2)
+        with col_east:
+            st.markdown("#### EASTERN CONFERENCE")
+            if east:
+                st.dataframe(pd.DataFrame(east), use_container_width=True, hide_index=True)
+        with col_west:
+            st.markdown("#### WESTERN CONFERENCE")
+            if west:
+                st.dataframe(pd.DataFrame(west), use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.caption(
+            "Series win probability is calculated using a Markov model seeded with regular-season "
+            "Point%, xGF%, and home-ice advantage (≈+4%). Probabilities update automatically as "
+            "results are loaded into the database."
+        )
