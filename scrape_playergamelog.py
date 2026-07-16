@@ -85,8 +85,13 @@ def toi_to_seconds(toi):
     except Exception:
         return 0
 
+_team_lookup_cache = {}
+
 def build_team_lookup(team_id):
-    """Name -> DB PlayerID for one team, with full-name / 'f. last' / last-name keys."""
+    """Name -> DB PlayerID for one team, with full-name / 'f. last' / last-name keys.
+    Cached per team_id (rosters don't change during a run)."""
+    if team_id in _team_lookup_cache:
+        return _team_lookup_cache[team_id]
     rows = con.execute(
         f"SELECT PlayerID, FirstName, LastName FROM Players WHERE TeamID = {team_id}"
     ).fetchall()
@@ -98,20 +103,46 @@ def build_team_lookup(team_id):
             lk[f"{fn_n[0]}. {ln_n}"] = pid
         if ln_n:
             lk.setdefault(f"__last__{ln_n}", pid)
+    _team_lookup_cache[team_id] = lk
     return lk
 
-def match_player(lk, raw_name):
+def build_global_lookups():
+    """League-wide unambiguous name -> PlayerID maps, used as a fallback for
+    players who changed teams since the game (esp. cross-season backfills).
+    Only names that resolve to exactly one PlayerID are kept."""
+    rows = con.execute("SELECT PlayerID, FirstName, LastName FROM Players").fetchall()
+    full, flast, last = {}, {}, {}
+    for pid, fn, ln in rows:
+        fn_n, ln_n = norm(fn), norm(ln)
+        if fn_n and ln_n:
+            full.setdefault(f"{fn_n} {ln_n}", set()).add(pid)
+            flast.setdefault(f"{fn_n[0]}. {ln_n}", set()).add(pid)
+        if ln_n:
+            last.setdefault(ln_n, set()).add(pid)
+    uniq = lambda d: {k: next(iter(v)) for k, v in d.items() if len(v) == 1}
+    return {"full": uniq(full), "flast": uniq(flast), "last": uniq(last)}
+
+def match_player(lk, glob, raw_name):
     nm = norm(raw_name)
+    parts = nm.split()
+    flast = f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else None
+    last  = parts[-1] if parts else None
+
+    # 1. Team-restricted (most reliable)
     if nm in lk:
         return lk[nm]
-    parts = nm.split()
-    if len(parts) >= 2:
-        # try "f. last" built from the API's already-abbreviated name
-        cand = f"{parts[0][0]}. {parts[-1]}"
-        if cand in lk:
-            return lk[cand]
-        if f"__last__{parts[-1]}" in lk:
-            return lk[f"__last__{parts[-1]}"]
+    if flast and flast in lk:
+        return lk[flast]
+    if last and f"__last__{last}" in lk:
+        return lk[f"__last__{last}"]
+
+    # 2. League-wide, only when unambiguous (handles traded/moved players)
+    if nm in glob["full"]:
+        return glob["full"][nm]
+    if flast and flast in glob["flast"]:
+        return glob["flast"][flast]
+    if last and last in glob["last"]:
+        return glob["last"][last]
     return None
 
 # schedule cache: date_str -> {home_abbrev: nhl_game_id}
@@ -178,6 +209,7 @@ if not games:
 # Main loop
 # ============================================================
 next_id = con.execute("SELECT COALESCE(MAX(PlayerGameLogID), 0) FROM PlayerGameLog").fetchone()[0] + 1
+glob = build_global_lookups()
 
 INSERT_SQL = """
 INSERT INTO PlayerGameLog (
@@ -216,6 +248,9 @@ for gi, (game_id, game_date, season, game_type,
             games_failed += 1
             continue
 
+        # Idempotent: clear any existing rows for this game so re-runs don't duplicate
+        con.execute(f"DELETE FROM PlayerGameLog WHERE GameID = {game_id}")
+
         game_rows = 0
         game_skips = []
         for side, team_id, is_home in [("homeTeam", home_id, True),
@@ -225,7 +260,7 @@ for gi, (game_id, game_date, season, game_type,
             for group in ("forwards", "defense", "goalies"):
                 for p in side_data.get(group, []):
                     raw = p.get("name", {}).get("default", "")
-                    pid = match_player(lk, raw)
+                    pid = match_player(lk, glob, raw)
                     if not pid:
                         game_skips.append(f"{side[:4]}:{raw}")
                         players_skipped += 1
