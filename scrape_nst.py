@@ -44,6 +44,21 @@ SEASON_PARAMS = {
     "2024-25": {"fromseason": "20242025", "thruseason": "20242025"},
 }
 
+# NST requires an explicit full report spec; without these its defaults now
+# return a partial view (only ~16 teams, 68 cols, tiny GP). These params request
+# the full regular-season, all-situations, count (non-rate) report for all teams.
+REPORT_PARAMS = {
+    "stype": "2",     # regular season
+    "sit":   "all",   # all situations
+    "score": "all",   # all score states
+    "rate":  "n",     # counts, not per-60 rates
+    "team":  "all",
+    "loc":   "B",     # both home and away
+    "gpf":   "410",   # games-played filter: all
+    "fd":    "",
+    "td":    "",
+}
+
 TEAM_NAME_MAP = {
     "Anaheim Ducks":          "Anaheim Ducks",
     "Boston Bruins":          "Boston Bruins",
@@ -141,10 +156,17 @@ def scrape_teams(season, con, params):
     print(f"\n{'='*55}")
     print(f"Scraping team stats — {season}")
     print(f"{'='*55}")
-    _, rows = fetch_table("https://www.naturalstattrick.com/teamtable.php", "teams", params)
+    _, rows = fetch_table("https://www.naturalstattrick.com/teamtable.php", "teams",
+                          {**params, **REPORT_PARAMS})
     team_lookup, _, _ = build_lookups(con)
     cat_id = con.execute("SELECT CategoryID FROM StatCategories WHERE CategoryName='Team Stats'").fetchone()
     cat_id = cat_id[0] if cat_id else 1
+    # Explicit column list (first N by ordinal) so INSERT survives extra columns
+    # added later by update_calculated_fields.py; those get NULL and are repopulated.
+    base_cols = [r[0] for r in con.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'TeamStandings' ORDER BY ordinal_position
+    """).fetchall()]
     con.execute("DELETE FROM TeamStandings WHERE Season = ?", [season])
     stat_id  = con.execute("SELECT COALESCE(MAX(StandingID), 0) FROM TeamStandings").fetchone()[0] + 1
     inserted = 0
@@ -187,8 +209,9 @@ def scrape_teams(season, con, params):
                 safe_float(row[67]), safe_float(row[68]),
                 safe_float(row[69]), safe_float(row[70]), safe_float(row[71]),
             )
+            col_list     = ",".join(base_cols[:len(vals)])
             placeholders = ",".join(["?"] * len(vals))
-            con.execute(f"INSERT INTO TeamStandings VALUES ({placeholders})", vals)
+            con.execute(f"INSERT INTO TeamStandings ({col_list}) VALUES ({placeholders})", vals)
             stat_id  += 1
             inserted += 1
         except Exception as e:
@@ -331,6 +354,8 @@ def scrape_goalies(season, con, params):
 # -- Main -----------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--season", required=True, help="Season: 2025-26, 2024-25, or 'all'")
+parser.add_argument("--teams-only", dest="teams_only", action="store_true",
+                    help="Refresh only TeamStandings (skip players and goalies)")
 args = parser.parse_args()
 
 seasons = list(SEASON_PARAMS.keys()) if args.season == "all" else [args.season]
@@ -346,10 +371,11 @@ for season in seasons:
     params = SEASON_PARAMS[season]
     scrape_teams(season, con, params)
     time.sleep(4)
-    scrape_players(season, con, params)
-    time.sleep(4)
-    scrape_goalies(season, con, params)
-    time.sleep(4)
+    if not args.teams_only:
+        scrape_players(season, con, params)
+        time.sleep(4)
+        scrape_goalies(season, con, params)
+        time.sleep(4)
 
 ts = con.execute("SELECT COUNT(*) FROM TeamStandings").fetchone()[0]
 ps = con.execute("SELECT COUNT(*) FROM PlayerStats").fetchone()[0]
