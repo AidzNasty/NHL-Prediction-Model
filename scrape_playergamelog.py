@@ -57,6 +57,11 @@ parser.add_argument("--season", default="2025-26", help="Season e.g. 2025-26")
 parser.add_argument("--date",   default=None, help="Only games on this date (YYYY-MM-DD)")
 parser.add_argument("--game",   type=int, default=None, help="Single DB GameID")
 parser.add_argument("--limit",  type=int, default=None, help="Max games (testing)")
+parser.add_argument("--force",  action="store_true",
+                    help="Reprocess games even if they already have PlayerGameLog rows")
+parser.add_argument("--auto-add", dest="auto_add", action="store_true",
+                    help="Insert players missing from the Players table (from NHL API) "
+                         "instead of skipping them")
 args = parser.parse_args()
 
 # ============================================================
@@ -145,6 +150,58 @@ def match_player(lk, glob, raw_name):
         return glob["last"][last]
     return None
 
+# -- Auto-add players missing from the DB (from NHL API) -------
+_nhl_player_cache = {}   # nhl_playerId -> DB PlayerID (added this run)
+_next_player_id   = [con.execute("SELECT COALESCE(MAX(PlayerID), 0) + 1 FROM Players").fetchone()[0]]
+
+def title_ascii(s):
+    return strip_accents((s or "").strip()).title()
+
+def auto_add_player(nhl_pid, team_id):
+    """Insert a Players row for a player not found in the DB, using the NHL
+    player landing endpoint. Cached by NHL playerId so each missing player is
+    inserted only once per run. Returns the new DB PlayerID (or None on failure)."""
+    if nhl_pid in _nhl_player_cache:
+        return _nhl_player_cache[nhl_pid]
+    try:
+        land = requests.get(
+            f"https://api-web.nhle.com/v1/player/{nhl_pid}/landing",
+            headers=HEADERS, timeout=15,
+        ).json()
+    except Exception as e:
+        print(f"    [auto-add error] playerId {nhl_pid}: {e}")
+        return None
+
+    first = title_ascii((land.get("firstName", {}) or {}).get("default", ""))
+    last  = title_ascii((land.get("lastName", {}) or {}).get("default", ""))
+    if not first and not last:
+        return None
+
+    def si(v):
+        try:
+            return int(v) if v is not None else None
+        except Exception:
+            return None
+
+    pid = _next_player_id[0]
+    con.execute("""
+        INSERT INTO Players
+        (PlayerID, TeamID, FirstName, LastName, Position,
+         JerseyNumber, IsActive, HeightInches, WeightLbs,
+         DateOfBirth, BirthCity, BirthCountry)
+        VALUES (?, ?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?, ?)
+    """, [
+        pid, team_id, first, last, land.get("position"),
+        si(land.get("sweaterNumber")),
+        si(land.get("heightInInches")), si(land.get("weightInPounds")),
+        (land.get("birthDate") or None),
+        title_ascii((land.get("birthCity", {}) or {}).get("default", "")) or None,
+        land.get("birthCountry"),
+    ])
+    _next_player_id[0] += 1
+    _nhl_player_cache[nhl_pid] = pid
+    return pid
+
 # schedule cache: date_str -> {home_abbrev: nhl_game_id}
 _schedule_cache = {}
 
@@ -177,8 +234,9 @@ where = [
     "g.HomeScore IS NOT NULL",
     "g.AwayScore IS NOT NULL",
     f"g.Season = '{args.season}'",
-    "pgl.GameID IS NULL",   # no PlayerGameLog rows yet
 ]
+if not args.force:
+    where.append("pgl.GameID IS NULL")   # only games with no rows yet
 if args.date:
     where.append(f"g.GameDate = '{args.date}'")
 if args.game:
@@ -261,6 +319,10 @@ for gi, (game_id, game_date, season, game_type,
                 for p in side_data.get(group, []):
                     raw = p.get("name", {}).get("default", "")
                     pid = match_player(lk, glob, raw)
+                    if not pid and args.auto_add:
+                        nhl_pid = p.get("playerId")
+                        if nhl_pid:
+                            pid = auto_add_player(nhl_pid, team_id)
                     if not pid:
                         game_skips.append(f"{side[:4]}:{raw}")
                         players_skipped += 1
@@ -310,7 +372,8 @@ print(f"\n=== PlayerGameLog Backfill Complete ===")
 print(f"  Games done:       {games_done}")
 print(f"  Games failed:     {games_failed}")
 print(f"  Rows inserted:    {rows_inserted}")
-print(f"  Players skipped:  {players_skipped} (not found in DB Players)")
+print(f"  Players auto-added: {len(_nhl_player_cache)} (inserted into Players from NHL API)")
+print(f"  Players skipped:  {players_skipped} (no NHL playerId / lookup failed)")
 total = con.execute("SELECT COUNT(*) FROM PlayerGameLog").fetchone()[0]
 print(f"  Total in DB:      {total} PlayerGameLog rows")
 con.close()
