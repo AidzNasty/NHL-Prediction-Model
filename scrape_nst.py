@@ -225,12 +225,12 @@ def scrape_players(season, con, params):
     print(f"{'='*55}")
     _, std_rows = fetch_table(
         "https://www.naturalstattrick.com/playerteams.php",
-        "indreg", {**params, "stdoi": "std"}
+        "indreg", {**params, **REPORT_PARAMS, "stdoi": "std", "pos": "S"}
     )
     time.sleep(4)
     _, oi_rows = fetch_table(
         "https://www.naturalstattrick.com/playerteams.php",
-        "players", {**params, "stdoi": "oi"}
+        "players", {**params, **REPORT_PARAMS, "stdoi": "oi", "pos": "S"}
     )
     oi_lookup = {}
     for row in oi_rows:
@@ -306,7 +306,7 @@ def scrape_goalies(season, con, params):
     print(f"{'='*55}")
     _, rows = fetch_table(
         "https://www.naturalstattrick.com/playerteams.php",
-        "players", {**params, "stdoi": "g"}
+        "players", {**params, **REPORT_PARAMS, "stdoi": "g", "pos": "G"}
     )
     _, by_name_team, by_name = build_lookups(con)
     con.execute("DELETE FROM GoalieStats WHERE Season = ?", [season])
@@ -356,6 +356,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--season", required=True, help="Season: 2025-26, 2024-25, or 'all'")
 parser.add_argument("--teams-only", dest="teams_only", action="store_true",
                     help="Refresh only TeamStandings (skip players and goalies)")
+parser.add_argument("--skip-teams", dest="skip_teams", action="store_true",
+                    help="Skip TeamStandings; refresh only players and goalies")
 args = parser.parse_args()
 
 seasons = list(SEASON_PARAMS.keys()) if args.season == "all" else [args.season]
@@ -369,8 +371,9 @@ print("Connected!\n")
 
 for season in seasons:
     params = SEASON_PARAMS[season]
-    scrape_teams(season, con, params)
-    time.sleep(4)
+    if not args.skip_teams:
+        scrape_teams(season, con, params)
+        time.sleep(4)
     if not args.teams_only:
         scrape_players(season, con, params)
         time.sleep(4)
