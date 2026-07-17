@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NHL Predictions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-fx"></div>
+  <!-- Mobile top bar -->
+  <header class="topbar">
+    <button id="navToggle" class="nav-toggle" aria-label="Menu">☰</button>
+    <span class="topbar-title">🏒 NHL Predictions</span>
+  </header>
+
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-puck">🏒</span>
+        <span class="brand-text">NHL<br />PREDICTIONS</span>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-page="today"><span class="nav-ico">📅</span>Today's Games</button>
+        <button class="nav-item" data-page="playoffs"><span class="nav-ico">🏆</span>Playoffs</button>
+        <button class="nav-item" data-page="props"><span class="nav-ico">🎯</span>Player Props</button>
+        <button class="nav-item" data-page="accuracy"><span class="nav-ico">📊</span>Model Accuracy</button>
+        <button class="nav-item" data-page="teams"><span class="nav-ico">🛡️</span>Team Stats</button>
+        <button class="nav-item" data-page="streaks"><span class="nav-ico">🔥</span>Hot &amp; Cold Streaks</button>
+        <button class="nav-item" data-page="guide"><span class="nav-ico">📖</span>Stats Guide</button>
+      </nav>
+
+      <div class="sidebar-status" id="sidebarStatus">
+        <div class="status-title">Model Status</div>
+        <div class="status-row"><span>Last run</span><code id="stLastRun">—</code></div>
+        <div class="status-row"><span>Season accuracy</span><code id="stAcc">—</code></div>
+        <div class="status-row"><span>Predictions</span><code id="stTotal">—</code></div>
+        <button class="refresh-btn" id="refreshBtn"><span class="rb-ico">⟳</span><span class="rb-txt">Refresh data</span></button>
+        <div class="status-updated" id="stUpdated"></div>
+      </div>
+
+      <div class="sidebar-foot">
+        Data: Natural Stat Trick, NHL API<br />
+        Model: RF + GB Ensemble (60/40)<br />
+        CV Accuracy: 60.5% ±1.8%
+      </div>
+    </aside>
+
+    <div class="scrim" id="scrim"></div>
+
+    <!-- Main content -->
+    <main class="main" id="main">
+      <div id="pageRoot"><!-- pages render here --></div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
