@@ -1,222 +1,167 @@
 """
-scrape_playoffs.py — Fixed duplicate check version
+scrape_playoffs.py
+-------------------
+Adds NHL playoff games (schedule + final score + winner + OT flag) to the
+Games table for a given season, using the NHL API.
+
+Source of truth is the NHL API:
+  - Each series' games:  /v1/schedule/playoff-series/{seasonCode}/{letter}/
+  - Date + OT status:    /v1/gamecenter/{gameId}/boxscore
+(The series endpoint omits game dates, so the boxscore is used for those.)
+
+Series letters run a.. through the bracket (8 first-round + 4 + 2 + 1 = 15,
+letters a-o). The script probes letters until they stop returning games, so it
+adapts to however far the playoffs have progressed.
+
+Idempotent: a game already in the DB (matched by matchup + final score) is
+skipped, so this is safe to re-run as series play out.
+
+GameStats and PlayerGameLog for the added games are handled by the dedicated
+scrapers afterward:
+    python scrape_gamestats.py    --season 2025-26
+    python scrape_playergamelog.py --season 2025-26
+
+Usage:
+    python scrape_playoffs.py --season 2025-26
+    python scrape_playoffs.py --season 2024-25
 """
-import os, time, requests, duckdb
-from bs4 import BeautifulSoup
-from datetime import datetime
+
+import os
+import sys
+import time
+import string
+import argparse
+import requests
+import duckdb
 from dotenv import load_dotenv
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 load_dotenv()
 TOKEN = os.getenv("MOTHERDUCK_TOKEN")
 DB    = os.getenv("MOTHERDUCK_DB", "my_db")
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Referer": "https://www.hockey-reference.com/",
+if not TOKEN:
+    raise ValueError("MOTHERDUCK_TOKEN not found in .env file")
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+
+# Season label -> NHL API season code
+SEASON_CODE = {
+    "2025-26": "20252026",
+    "2024-25": "20242025",
+    "2023-24": "20232024",
 }
 
-ABBREV_MAP = {
-    "ANA":"ANA","BOS":"BOS","BUF":"BUF","CGY":"CGY","CAR":"CAR",
-    "CHI":"CHI","COL":"COL","CBJ":"CBJ","DAL":"DAL","DET":"DET",
-    "EDM":"EDM","FLA":"FLA","LAK":"L.A","MIN":"MIN","MTL":"MTL",
-    "NSH":"NSH","NJD":"N.J","NYI":"NYI","NYR":"NYR","OTT":"OTT",
-    "PHI":"PHI","PIT":"PIT","SJS":"S.J","SEA":"SEA","STL":"STL",
-    "TBL":"T.B","TOR":"TOR","UTA":"UTA","VAN":"VAN","VEG":"VGK",
-    "WSH":"WSH","WPG":"WPG",
-}
+parser = argparse.ArgumentParser()
+parser.add_argument("--season", default="2025-26", help="Season e.g. 2025-26")
+args = parser.parse_args()
 
-def safe_int(val):
-    try:
-        return int(str(val).replace(",","")) if val and str(val).strip() not in ("","-") else None
-    except:
-        return None
+if args.season not in SEASON_CODE:
+    print(f"Unknown season: {args.season} (known: {', '.join(SEASON_CODE)})")
+    sys.exit(1)
+code = SEASON_CODE[args.season]
 
-def fetch(url, delay=4):
-    time.sleep(delay)
-    r = requests.get(url, headers=HEADERS, timeout=20)
-    if r.status_code == 429:
-        print("  [429] sleeping 60s...")
-        time.sleep(60)
-        r = requests.get(url, headers=HEADERS, timeout=20)
-    return BeautifulSoup(r.text, "html.parser") if r.status_code == 200 else None
-
-print(f"Connecting...")
+print(f"Connecting to MotherDuck: {DB}...")
 con = duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 print("Connected!\n")
 
-teams     = con.execute("SELECT TeamID, TeamName, Abbreviation FROM Teams").fetchall()
-by_abbrev = {r[2]: r[0] for r in teams}
-by_name   = {r[1]: r[0] for r in teams}
+# Team abbreviation -> TeamID (NHL API abbrevs match the DB's)
+abbr2id = {r[0]: r[1] for r in con.execute("SELECT Abbreviation, TeamID FROM Teams").fetchall()}
 
-max_game_id = con.execute("SELECT COALESCE(MAX(GameID),0) FROM Games").fetchone()[0] + 1
-max_stat_id = con.execute("SELECT COALESCE(MAX(StatID),0) FROM GameStats").fetchone()[0] + 1
+# Existing playoff games for this season, keyed by matchup + score (for idempotency)
+existing = set()
+for h, a, hs, as_ in con.execute("""
+    SELECT ha.Abbreviation, aa.Abbreviation, g.HomeScore, g.AwayScore
+    FROM Games g
+    JOIN Teams ha ON g.HomeTeamID = ha.TeamID
+    JOIN Teams aa ON g.AwayTeamID = aa.TeamID
+    WHERE g.GameType = 'Playoffs' AND g.Season = ?
+""", [args.season]).fetchall():
+    existing.add((h, a, hs, as_))
 
-print("Fetching HR playoff page...")
-soup = fetch("https://www.hockey-reference.com/playoffs/NHL_2025.html")
-box_links = []
-for a in soup.find_all("a", href=True):
-    href = a["href"]
-    if "/boxscores/" in href and href.endswith(".html") and "2025" in href:
-        if href not in box_links:
-            box_links.append(href)
-print(f"Found {len(box_links)} links\n")
+next_id = con.execute("SELECT COALESCE(MAX(GameID), 0) FROM Games").fetchone()[0] + 1
 
-inserted = skipped = errors = 0
 
-for link in box_links:
-    url      = "https://www.hockey-reference.com" + link
-    filename = link.split("/")[-1].replace(".html","")
+def get_json(url):
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    if r.status_code == 429:
+        print("  [429] rate limited — sleeping 30s...")
+        time.sleep(30)
+        r = requests.get(url, headers=HEADERS, timeout=20)
+    return r.json() if r.status_code == 200 else None
 
-    try:
-        game_date = datetime.strptime(filename[:8], "%Y%m%d").date()
-    except:
-        skipped += 1
+
+inserted = skipped = unplayed = 0
+
+for letter in string.ascii_lowercase:  # a..z (bracket only uses a-o)
+    series = get_json(f"https://api-web.nhle.com/v1/schedule/playoff-series/{code}/{letter}/")
+    games = (series or {}).get("games", [])
+    if not games:
+        # No series with this letter — assume we've passed the end of the bracket.
+        if letter > "o":
+            break
         continue
 
-    # Fetch page first to get both teams
-    soup2 = fetch(url)
-    if not soup2:
-        errors += 1
-        continue
+    a0 = games[0].get("awayTeam", {}).get("abbrev", "?")
+    h0 = games[0].get("homeTeam", {}).get("abbrev", "?")
+    print(f"Series {letter.upper()}  {a0} vs {h0}  ({len(games)} games)")
 
-    scorebox = soup2.find("div", {"class": "scorebox"})
-    if not scorebox:
-        errors += 1
-        continue
+    for g in games:
+        gid = g.get("id")
+        box = get_json(f"https://api-web.nhle.com/v1/gamecenter/{gid}/boxscore")
+        time.sleep(0.3)
+        if not box:
+            continue
 
-    # Extract teams from strong links
-    team_hrefs = []
-    for strong in scorebox.find_all("strong"):
-        a = strong.find("a", href=True)
-        if a and "/teams/" in a["href"]:
-            parts = a["href"].split("/")
-            if len(parts) >= 3:
-                team_hrefs.append((parts[2].upper(), a.get_text(strip=True)))
+        home_abbr = box.get("homeTeam", {}).get("abbrev")
+        away_abbr = box.get("awayTeam", {}).get("abbrev")
+        home_score = box.get("homeTeam", {}).get("score")
+        away_score = box.get("awayTeam", {}).get("score")
+        game_date  = box.get("gameDate")
 
-    if len(team_hrefs) < 2:
-        errors += 1
-        continue
+        # Skip games that haven't been played yet (no final score)
+        if home_score is None or away_score is None:
+            unplayed += 1
+            continue
 
-    away_hr, away_name = team_hrefs[0]
-    home_hr, home_name = team_hrefs[1]
+        if (home_abbr, away_abbr, home_score, away_score) in existing:
+            skipped += 1
+            continue
 
-    away_team_id = by_abbrev.get(ABBREV_MAP.get(away_hr, away_hr)) or by_name.get(away_name)
-    home_team_id = by_abbrev.get(ABBREV_MAP.get(home_hr, home_hr)) or by_name.get(home_name)
+        home_id = abbr2id.get(home_abbr)
+        away_id = abbr2id.get(away_abbr)
+        if not home_id or not away_id:
+            print(f"  [NO TEAM] {away_abbr} @ {home_abbr}")
+            continue
 
-    if not away_team_id or not home_team_id:
-        print(f"  [NO TEAM] {away_hr}/{home_hr} — {away_name}/{home_name}")
-        errors += 1
-        continue
-
-    # Check duplicate using both teams
-    existing = con.execute(f"""
-        SELECT GameID FROM Games
-        WHERE GameDate   = '{game_date}'
-          AND HomeTeamID = {home_team_id}
-          AND AwayTeamID = {away_team_id}
-          AND GameType   = 'Playoffs'
-    """).fetchone()
-
-    if existing:
-        skipped += 1
-        continue
-
-    # Scores
-    scores = scorebox.find_all("div", {"class": "score"})
-    if len(scores) < 2:
-        errors += 1
-        continue
-
-    try:
-        away_score = int(scores[0].get_text(strip=True))
-        home_score = int(scores[1].get_text(strip=True))
-    except:
-        errors += 1
-        continue
-
-    # OT check
-    is_ot = False
-    meta = scorebox.find("div", {"class": "scorebox_meta"})
-    if meta and any(x in meta.get_text().lower()
-                    for x in ["overtime","shootout"," ot"," so"]):
-        is_ot = True
-    if not is_ot:
-        linescore = soup2.find("table", {"id": "linescore"})
-        if linescore:
-            hdrs = [th.get_text(strip=True)
-                    for th in linescore.find("thead").find_all("th")]
-            for row in linescore.find("tbody").find_all("tr"):
-                cells = [td.get_text(strip=True)
-                         for td in row.find_all("td")]
-                for i, h in enumerate(hdrs):
-                    if h in ("OT","2OT","3OT","SO") and i < len(cells):
-                        if cells[i] and cells[i] != "0":
-                            is_ot = True
-
-    winner_id = home_team_id if home_score > away_score else away_team_id
-
-    home_b2b = con.execute(f"""
-        SELECT COUNT(*) FROM Games
-        WHERE (HomeTeamID={home_team_id} OR AwayTeamID={home_team_id})
-          AND GameDate='{game_date}'::DATE - INTERVAL '1 day'
-    """).fetchone()[0] > 0
-
-    away_b2b = con.execute(f"""
-        SELECT COUNT(*) FROM Games
-        WHERE (HomeTeamID={away_team_id} OR AwayTeamID={away_team_id})
-          AND GameDate='{game_date}'::DATE - INTERVAL '1 day'
-    """).fetchone()[0] > 0
-
-    con.execute("""
-        INSERT INTO Games (
-            GameID,HomeTeamID,AwayTeamID,GameDate,Season,
-            GameType,HomeScore,AwayScore,WinnerTeamID,
-            OvertimeFlag,HomeIsBackToBack,AwayIsBackToBack
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    """, [max_game_id, home_team_id, away_team_id, game_date,
-          "2024-25", "Playoffs", home_score, away_score,
-          winner_id, is_ot, home_b2b, away_b2b])
-
-    game_id = max_game_id
-    max_game_id += 1
-
-    # GameStats for both teams
-    for team_id, hr_abbrev in [(home_team_id, home_hr),
-                               (away_team_id, away_hr)]:
-        shots = hits = pim = blk = None
-        for tid in [f"stats_{hr_abbrev}", f"stats_{hr_abbrev.lower()}"]:
-            tbl = soup2.find("table", {"id": tid})
-            if tbl:
-                tfoot = tbl.find("tfoot")
-                if tfoot:
-                    row = tfoot.find("tr")
-                    if row:
-                        cells = {td.get("data-stat"): td.get_text(strip=True)
-                                 for td in row.find_all("td")}
-                        shots = safe_int(cells.get("shots"))
-                        hits  = safe_int(cells.get("hits"))
-                        pim   = safe_int(cells.get("pen_min"))
-                        blk   = safe_int(cells.get("blocked_shots") or
-                                         cells.get("blk"))
-                break
+        winner_id = home_id if home_score > away_score else away_id
+        is_ot = box.get("gameOutcome", {}).get("lastPeriodType", "REG") != "REG"
 
         con.execute("""
-            INSERT INTO GameStats (
-                StatID,GameID,TeamID,Shots,Hits,PowerPlayGoals,
-                PenaltyMinutes,BlockedShots,FaceoffWinPct,Giveaways,Takeaways
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """, [max_stat_id, game_id, team_id,
-              shots, hits, None, pim, blk, None, None, None])
-        max_stat_id += 1
+            INSERT INTO Games (
+                GameID, HomeTeamID, AwayTeamID, GameDate, Season,
+                GameType, HomeScore, AwayScore, WinnerTeamID, OvertimeFlag
+            ) VALUES (?, ?, ?, ?, ?, 'Playoffs', ?, ?, ?, ?)
+        """, [next_id, home_id, away_id, game_date, args.season,
+              home_score, away_score, winner_id, is_ot])
+        existing.add((home_abbr, away_abbr, home_score, away_score))
+        next_id += 1
+        inserted += 1
+        ot_str = " (OT)" if is_ot else ""
+        print(f"  + {game_date} {away_abbr} {away_score} @ {home_abbr} {home_score}{ot_str}")
 
-    ot_str = " (OT/SO)" if is_ot else ""
-    print(f"  OK {game_date} {away_name} @ {home_name}: {away_score}-{home_score}{ot_str}")
-    inserted += 1
+    time.sleep(0.3)
 
-total = con.execute("SELECT COUNT(*) FROM Games WHERE GameType='Playoffs'").fetchone()[0]
+total = con.execute(
+    "SELECT COUNT(*) FROM Games WHERE GameType='Playoffs' AND Season=?", [args.season]
+).fetchone()[0]
 print(f"\n{'='*55}")
-print(f"  Inserted: {inserted} | Skipped: {skipped} | Errors: {errors}")
-print(f"  Total playoff games in DB: {total}")
+print(f"  Inserted:  {inserted}")
+print(f"  Skipped:   {skipped} (already in DB)")
+print(f"  Unplayed:  {unplayed} (no final score yet)")
+print(f"  Total {args.season} playoff games in DB: {total}")
 print(f"{'='*55}")
 con.close()
-print("\nDone!")
+print("\nDone! Run scrape_gamestats.py and scrape_playergamelog.py to fill stats.")
