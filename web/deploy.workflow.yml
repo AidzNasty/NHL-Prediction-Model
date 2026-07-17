@@ -1,0 +1,58 @@
+name: Deploy web app
+
+# ─────────────────────────────────────────────────────────────────────────
+# TO ACTIVATE: move this file to  .github/workflows/deploy.yml
+# It lives here (not in .github/workflows) because pushing workflow files
+# requires a GitHub token with the "workflow" scope. Add it via the GitHub
+# web UI (Add file → create .github/workflows/deploy.yml and paste this), or
+# push it from a PAT that has the workflow scope.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Auto-deploys web/ on every push to main.
+# One-time setup:
+#   1. In Render, open your service → Settings → Deploy Hook, copy the URL.
+#   2. In GitHub, repo → Settings → Secrets and variables → Actions →
+#      New repository secret named RENDER_DEPLOY_HOOK_URL with that URL.
+# (Railway auto-deploys from GitHub natively and needs no workflow.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "requirements.txt"
+      - "Procfile"
+      - "render.yaml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    name: Verify build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Import-check the WSGI app
+        # MOTHERDUCK_TOKEN is optional here — importing the module must not require it.
+        run: python -c "import sys; sys.path.insert(0, 'web'); import server; assert server.app, 'Flask app missing'; print('OK: server:app imports')"
+
+  deploy:
+    name: Trigger Render deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Call Render deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret not set — skipping deploy (verify still ran)."
+            exit 0
+          fi
+          curl -fsSL -X POST "$HOOK" && echo "Render deploy triggered."

@@ -1,0 +1,18 @@
+# Render Blueprint — one-click deploy of the NHL Predictions web app.
+# In Render: New → Blueprint → connect this repo. Render reads this file.
+# Set MOTHERDUCK_TOKEN as a secret in the dashboard (sync: false below).
+services:
+  - type: web
+    name: nhl-predictions
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --chdir web server:app --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/status
+    envVars:
+      - key: MOTHERDUCK_TOKEN
+        sync: false          # set this secret in the Render dashboard
+      - key: MOTHERDUCK_DB
+        value: my_db
+      - key: PYTHON_VERSION
+        value: "3.11.9"
