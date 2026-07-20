@@ -213,6 +213,7 @@ else:
         away_name = game["AwayTeamName"]
         home_b2b  = bool(game["HomeIsBackToBack"])
         away_b2b  = bool(game["AwayIsBackToBack"])
+        is_playoff = bool(game.get("IsPlayoff", 0))
 
         print(f"\n  {away_name} @ {home_name}")
 
@@ -223,23 +224,27 @@ else:
         game_states = get_game_states(target_date)
         game_state  = game_states.get((home_abbrev, away_abbrev), "PRE")
 
-        existing = con.execute(f"""
+        # Fetch ALL existing rows for this game (not just one) so duplicates
+        # are detected and cannot accumulate across re-runs.
+        existing_rows = con.execute(f"""
             SELECT PredictionID, ActualWinner FROM Predictions
             WHERE GameID = {game_id}
               AND PredictedWinner IS NOT NULL
-        """).fetchone()
-        if existing:
+        """).fetchall()
+        if existing_rows:
             if game_state in ("LIVE", "CRIT", "OFF", "FINAL"):
                 print(f"    Game is {game_state} — keeping existing prediction")
                 continue
-            if existing[1] is not None:
+            if any(r[1] is not None for r in existing_rows):
                 print(f"    Game already completed — skipping")
                 continue
-            # Game is PRE (not started) — delete and re-predict with fresh lineup data
-            pred_id = existing[0]
-            con.execute(f"DELETE FROM PlayerPredictions WHERE GameID = {game_id} AND PredictionDate = CAST('{target_date}' AS DATE)")
-            con.execute(f"DELETE FROM Predictions WHERE PredictionID = {pred_id}")
-            print(f"    Game is PRE — refreshing prediction with latest lineup data...")
+            # Game is PRE (not started, no results yet) — purge ALL existing
+            # rows for this GameID (prevents duplicates) and re-predict with
+            # the latest lineup data.
+            con.execute(f"DELETE FROM PlayerPredictions WHERE GameID = {game_id}")
+            con.execute(f"DELETE FROM Predictions WHERE GameID = {game_id}")
+            print(f"    Game is PRE — refreshing prediction "
+                  f"(purged {len(existing_rows)} old row(s))...")
 
         # Player predictions
         print(f"    Player predictions...")
@@ -260,7 +265,9 @@ else:
             con, home_id, away_id, SEASON,
             home_b2b=home_b2b, away_b2b=away_b2b,
             home_proj_goals=home_proj,
-            away_proj_goals=away_proj
+            away_proj_goals=away_proj,
+            is_playoff=is_playoff,
+            game_date=target_date
         )
 
         if team_pred is None:
