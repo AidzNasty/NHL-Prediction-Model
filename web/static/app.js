@@ -279,8 +279,8 @@ function gameCard(g) {
     </div>
     <div class="analytics-row">
       ${mini('HomeIce Diff', signed(g.home_ice, 2), g.home_ice > 0)}
-      ${mini('xGF% Diff', signed(g.xgf, 1) + '%', g.xgf > 0)}
-      ${mini('GSAX Diff', signed(g.gsax, 1), g.gsax > 0)}
+      ${mini('Goal Diff/GP', signed(g.xgf, 2), g.xgf > 0)}
+      ${mini('Elo Edge', signed(g.gsax * 100, 0), g.gsax > 0)}
     </div>
     ${result}${projGrid}
   </div>`;
@@ -608,22 +608,22 @@ const GUIDE = {
   'Possession & Shot Quality': [
     ['CF% — Corsi For Percentage', 'The percentage of all shot attempts (goals, shots on goal, missed shots, and blocked shots) taken by a team at 5-on-5.', 'CF% = Attempts For / (Attempts For + Attempts Against)', 'Above 50% means the team generates more shot attempts than they allow — the broadest measure of possession. League average is 50%.'],
     ['FF% — Fenwick For Percentage', 'Same as CF% but excludes blocked shots. Unblocked attempts are a better proxy for shot quality.', 'FF% = Unblocked For / (Unblocked For + Unblocked Against)', 'Tracks closely with CF%, but shot-blocking defenses widen the gap.'],
-    ['xGF% — Expected Goals For Percentage', 'Percentage of expected goals generated, weighting each shot by its probability of scoring (type, location, situation).', 'xGF% = xGoals For / (xGoals For + xGoals Against)', 'The most predictive possession stat and a primary model input. Above 50% signals genuine shot-quality dominance.'],
+    ['xGF% — Expected Goals For Percentage', 'Percentage of expected goals generated, weighting each shot by its probability of scoring (type, location, situation).', 'xGF% = xGoals For / (xGoals For + xGoals Against)', 'The most predictive possession stat. Above 50% signals genuine shot-quality dominance. (Shown as team context — the game model now uses point-in-time Elo and goal-based form rather than season-aggregate xGF%.)'],
     ['HDCF% — High-Danger Corsi For %', 'Corsi restricted to high-danger attempts — shots from the slot, roughly within 20 feet of the net.', 'HDCF% = HD Attempts For / (HD For + HD Against)', 'High-danger chances convert far more often. Pairs with xGF% to tell the full possession story.'],
     ['PDO', "Sum of a team's 5-on-5 save percentage and shooting percentage.", 'PDO = SV% + SH% (e.g. .923 + .080 = 100.3)', 'Regresses toward 100. Above 102 = likely lucky; below 98 = due for better results. Used as a luck/sustainability signal.'],
   ],
   'Goalie & Shooting': [
     ['SV% — Save Percentage', 'Fraction of shots on goal a goalie stops.', 'SV% = Saves / Shots On Goal Against', 'League average ~.906–.912. Above .920 over a full season is elite. Shown here as a percentage.'],
     ['SH% — Shooting Percentage', 'Percentage of shots on goal that become goals.', 'SH% = Goals / Shots On Goal', 'League average ~8–10%. Regresses toward the mean; sustained highs indicate elite skaters or puck luck.'],
-    ['GSAX — Goals Saved Above Expected', 'How many more goals a goalie prevented vs an average goalie facing the same shots.', 'GSAX = Expected Goals Against − Actual Goals Against', 'Positive = outperformed. The primary goalie-quality model input. +10 over a season is elite.'],
+    ['GSAX — Goals Saved Above Expected', 'How many more goals a goalie prevented vs an average goalie facing the same shots.', 'GSAX = Expected Goals Against − Actual Goals Against', 'Positive = outperformed. +10 over a season is elite. (Shown as team context — per-game goalie data isn\'t captured, so the game model doesn\'t use GSAX directly.)'],
     ['GF/G — Goals For Per Game', 'Average goals scored per game (all situations).', 'GF/G = Total Goals For / Games Played', 'Top teams sit above 3.5. Pair with GA/G for goal differential.'],
     ['GA/G — Goals Against Per Game', 'Average goals allowed per game.', 'GA/G = Total Goals Against / Games Played', 'Elite defenses allow under 2.5. GF/G − GA/G is one of the strongest predictors of success.'],
     ['FO% — Faceoff Win Percentage', 'Percentage of faceoffs won.', 'FO% = Faceoffs Won / Total Faceoffs', 'League average 50%. Modest but real effect on outcomes, especially defensive-zone draws.'],
   ],
   'Model Inputs': [
-    ['xGF Differential', "Difference between home and away xGF% over the last 10 games.", 'xGF Diff = Home xGF% − Away xGF% (rolling)', 'Positive = home team the better recent possession team. One of the highest-weight features.'],
-    ['GSAX Differential', 'Difference in Goals Saved Above Expected between the two goalies.', 'GSAX Diff = Home GSAX − Away GSAX', 'Captures goalie-matchup quality. Large positive = home goaltending edge.'],
-    ['HomeIce Differential', 'Composite home-ice score from historical home win rate vs league baseline.', 'From team-specific home W% vs league baseline', 'Adjusts the baseline per matchup — some arenas confer a bigger edge than others.'],
+    ['Goal Differential / Game', "Difference between the two teams' season-to-date goal differential per game, computed point-in-time (only games before the matchup).", 'Goal Diff/GP = Home (GF−GA)/game − Away (GF−GA)/game', 'Positive = home team has outscored opponents by more this season. One of the highest-weight model features.'],
+    ['Elo Edge', "Gap in the two teams' Elo ratings. Elo updates game-by-game (home-ice + margin-of-victory) and carries across seasons, so it is leak-free.", 'Elo Edge = Home Elo − Away Elo (before home-ice adjustment)', "Positive = home team is the stronger side by Elo. Elo and its win probability are the model's most important features."],
+    ['HomeIce Differential', "Composite home-ice score combining the home team's point-in-time home win rate and the away team's road win rate.", 'HomeIce Diff = (Home home-W% − Away road-W%) × 6', 'Adjusts the baseline per matchup — some arenas confer a bigger edge than others.'],
     ['Back-to-Back Flag', 'Whether a team is playing its second game in two nights.', 'B2B = 1 if a game was played the previous day', 'B2B meaningfully lowers win probability, especially with travel. Applied separately for home/away.'],
     ['Model Confidence %', 'Ensemble probability that the predicted winner actually wins.', 'Confidence = max(P(home win), P(away win))', '≥65% High (green) · 55–65% Medium (yellow) · <55% Low (red). Historical CV accuracy 60.5%.'],
   ],
