@@ -1,314 +1,271 @@
 """
 player_model.py
 ----------------
-Trains and runs the player performance prediction model.
+Per-game player prop model — POINT-IN-TIME (leak-free) rebuild.
 
-Predicts per-player per-game probabilities:
-  - Goal probability
-  - Assist probability
-  - Point probability
+Predicts real per-game probabilities:
+  - P(player scores >=1 goal)
+  - P(player records >=1 assist)
+  - P(player records >=1 point)
 
-Key optimization: ALL data loaded upfront in batch.
-Zero per-player DB queries during training.
+History (why this was rewritten, 2026-07):
+  The previous model (a) used the player's SEASON average Goals/GP as the
+  target while feeding it the same player's season per-60 rates as features
+  (predicting a number from itself), and (b) never used per-game data —
+  it fabricated rows by sampling random opponents around one season snapshot.
+  Its "probabilities" were clipped season rates.
+
+  This version trains on real skater-games from PlayerGameLog. Features are
+  built from ONLY each player's earlier games plus the opponent's as-of-date
+  goals-against (see pit_player_features.py); targets are the actual per-game
+  goal/assist/point events. One calibrated HistGradientBoosting classifier
+  per target, so the outputs are genuine, well-calibrated probabilities.
+
+Public interface (train / predict_player / predict_team_players / save / load
+and their return keys) is unchanged so train_and_predict.py keeps working.
+The teams_df / goalies_df arguments are accepted for compatibility but no
+longer used as feature sources (they were season snapshots = leakage).
 """
 
-import os
 import pickle
 import numpy as np
 import pandas as pd
 from datetime import datetime
 
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import accuracy_score, log_loss
 
-from db_features import (
-    get_connection,
-    get_player_features,
-    get_team_features,
-    get_goalie_features,
-    get_confirmed_lineup,
+from db_features import get_connection, get_player_features, get_confirmed_lineup
+from pit_player_features import (
+    load_player_games, build_opp_defense, prior_season_rates,
+    build_player_table, compute_live_player_state, snapshot_player,
+    LEAGUE_BASE, _PlayerAcc,
 )
 
 MODEL_FILE = "nhl_player_model.pkl"
+TARGETS = ["goal", "assist", "point"]
+
 
 class PlayerModel:
 
     def __init__(self):
-        self.goal_model    = None
-        self.assist_model  = None
-        self.point_model   = None
-        self.scaler        = None
+        self.models       = {}   # target -> classifier
+        self.calibrators  = {}   # target -> isotonic
         self.feature_names = None
         self.trained_date  = None
         self.training_players = 0
+        self.holdout = {}        # target -> (base_ll, model_ll)
+        # cached live state
+        self._prior = None
+        self._accs  = None
+        self._opp_ga = None      # (season, team) -> current GA/game
+        self._season = None
 
-    # -- Fast feature builder (no DB calls) -------------------
-    def _build_feats(self, player, opp, opp_goalie, is_home):
-        """Build feature dict entirely from in-memory DataFrames."""
-        def v(row, key, default=0.0):
-            if row is None:
-                return default
-            val = row.get(key, default) if hasattr(row, "get") else getattr(row, key, default)
-            try:
-                f = float(val)
-                return default if (np.isnan(f) or np.isinf(f)) else f
-            except:
-                return default
+    @staticmethod
+    def _hgb():
+        return HistGradientBoostingClassifier(
+            max_depth=3, learning_rate=0.05, max_iter=300,
+            min_samples_leaf=40, l2_regularization=1.0, random_state=42)
 
-        return {
-            # Player individual
-            "ixG_Per60":       v(player, "ixG_Per60"),
-            "iHDCF_Per60":     v(player, "iHDCF_Per60"),
-            "iCF_Per60":       v(player, "iCF_Per60"),
-            "iSCF_Per60":      v(player, "iSCF_Per60"),
-            "Rush_Per60":      v(player, "Rush_Per60"),
-            "Goals_Per60":     v(player, "Goals_Per60"),
-            "Assists_Per60":   v(player, "Assists_Per60"),
-            "Points_Per60":    v(player, "Points_Per60"),
-            "Player_SH_Pct":   v(player, "Player_SH_Pct", 9.0),
-            "IPP":             v(player, "IPP", 60.0),
-            "TOI_Per_Game":    v(player, "TOI_Per_Game", 12.0),
-            "Off_Zone_Start_Pct": v(player, "Off_Zone_Start_Pct", 50.0),
-            "OnIce_xGF_Pct":   v(player, "OnIce_xGF_Pct", 50.0),
-            "OnIce_CF_Pct":    v(player, "OnIce_CF_Pct", 50.0),
-            "OnIce_PDO":       v(player, "OnIce_PDO", 100.0),
-            # Opponent defense
-            "opp_xGA":         v(opp, "xGA", 150.0),
-            "opp_HDCF_Pct":    v(opp, "HDCF_Pct", 50.0),
-            "opp_SV_Pct":      v(opp, "SV_Pct", 0.910),
-            "opp_GA_Per_Game": v(opp, "GA_Per_Game", 3.0),
-            # Opponent goalie
-            "opp_goalie_GSAX":     v(opp_goalie, "Goalie_GSAX", 0.0),
-            "opp_goalie_HDSV_Pct": v(opp_goalie, "Goalie_HDSV_Pct", 85.0),
-            "opp_goalie_SV_Pct":   v(opp_goalie, "Goalie_SV_Pct", 0.910),
-            # Context
-            "is_home": 1 if is_home else 0,
-            "is_b2b":  0,
-        }
+    @staticmethod
+    def _oof_proba(model_factory, X_np, y, sw, n_splits=4):
+        """Time-series out-of-fold P(y=1) for leak-free calibration."""
+        oof = np.full(len(y), np.nan)
+        for tr, te in TimeSeriesSplit(n_splits=n_splits).split(X_np):
+            m = model_factory().fit(X_np[tr], y[tr], sample_weight=sw[tr])
+            oof[te] = m.predict_proba(X_np[te])[:, 1]
+        return oof
 
-    # -- Train ------------------------------------------------
+    # ── Train ─────────────────────────────────────────────────
     def train(self, con):
-        print("\n" + "="*60)
-        print("TRAINING PLAYER MODEL")
-        print("="*60)
+        print("\n" + "=" * 60)
+        print("TRAINING PLAYER MODEL  (point-in-time, per-game)")
+        print("=" * 60)
 
-        X_list, y_goal_list, y_assist_list, y_point_list = [], [], [], []
-
-        for season in ["2024-25", "2025-26"]:
-            print(f"\n  Loading {season} data (batch)...")
-
-            # ONE query per table per season — no loops hitting DB
-            players_df = get_player_features(con, season)
-            teams_df   = get_team_features(con, season)
-            goalies_df = get_goalie_features(con, season)
-
-            if players_df.empty:
-                print(f"  No data for {season}, skipping")
-                continue
-
-            print(f"  {len(players_df)} players, {len(teams_df)} teams loaded")
-
-            # Index for fast lookup
-            goalies_idx = goalies_df.set_index("TeamID")
-
-            for _, player in players_df.iterrows():
-                if player["GP"] < 10:
-                    continue
-
-                team_id = int(player["TeamID"])
-                gp      = player["GP"]
-
-                # Sample 3 opponents — all in memory
-                opps = teams_df[teams_df["TeamID"] != team_id].sample(
-                    min(3, len(teams_df) - 1), random_state=42
-                )
-
-                for _, opp in opps.iterrows():
-                    opp_id     = int(opp["TeamID"])
-                    opp_goalie = goalies_idx.loc[opp_id] if opp_id in goalies_idx.index else None
-
-                    for is_home in [True, False]:
-                        feats = self._build_feats(player, opp, opp_goalie, is_home)
-                        X_list.append(feats)
-                        y_goal_list.append(  min(player["Goals"]         / gp, 1.0))
-                        y_assist_list.append(min(player["Total_Assists"] / gp, 1.0))
-                        y_point_list.append( min(player["Total_Points"]  / gp, 1.0))
-
-        if not X_list:
-            print("  ERROR: No training data built")
-            return
-
-        X        = pd.DataFrame(X_list).fillna(0)
+        games   = load_player_games(con)
+        opp_def = build_opp_defense(con)
+        prior   = prior_season_rates(games)
+        X, meta = build_player_table(games, opp_def, prior)
         self.feature_names = list(X.columns)
-        y_goal   = np.array(y_goal_list)
-        y_assist = np.array(y_assist_list)
-        y_point  = np.array(y_point_list)
 
-        print(f"\n  Training rows:   {len(X)}")
-        print(f"  Features:        {len(self.feature_names)}")
-        print(f"  Avg goal rate:   {y_goal.mean():.3f}")
-        print(f"  Avg assist rate: {y_assist.mean():.3f}")
-        print(f"  Avg point rate:  {y_point.mean():.3f}")
+        dates = pd.to_datetime(meta["GameDate"])
+        is_playoff = meta["IsPlayoff"].to_numpy()
+        sw = np.where(is_playoff == 1, 0.5, 1.0)
+        X_np = X.to_numpy()
 
-        self.scaler  = StandardScaler()
-        X_scaled     = self.scaler.fit_transform(X)
+        print(f"  Skater-games:  {len(X)}")
+        print(f"  Features:      {len(self.feature_names)}")
 
-        params = dict(n_estimators=100, max_depth=4,
-                      learning_rate=0.05, subsample=0.8, random_state=42)
+        # Temporal holdout (last 20% of 2025-26 regular season)
+        pool = meta[(meta["Season"] == "2025-26") & (meta["IsPlayoff"] == 0)]
+        do_holdout = len(pool) > 500
+        if do_holdout:
+            cutoff = np.datetime64(pool["GameDate"].quantile(0.80))
+            tr_mask = dates.to_numpy() < cutoff
+            te_mask = ((dates.to_numpy() >= cutoff)
+                       & (meta["Season"] == "2025-26").to_numpy()
+                       & (is_playoff == 0))
+            print(f"\n  Temporal holdout (n={int(te_mask.sum())}):")
 
-        print("\n  Training goal model...")
-        self.goal_model = GradientBoostingRegressor(**params)
-        self.goal_model.fit(X_scaled, y_goal)
+        for tgt in TARGETS:
+            y = meta[f"y_{tgt}"].to_numpy()
+            if do_holdout:
+                m = self._hgb().fit(X_np[tr_mask], y[tr_mask], sample_weight=sw[tr_mask])
+                p = m.predict_proba(X_np[te_mask])[:, 1]
+                yte = y[te_mask]
+                base = yte.mean()
+                base_ll = log_loss(yte, np.full(len(yte), base), labels=[0, 1])
+                mdl_ll  = log_loss(yte, np.clip(p, 1e-6, 1 - 1e-6), labels=[0, 1])
+                acc     = accuracy_score(yte, (p >= 0.5).astype(int))
+                base_acc = max(base, 1 - base)
+                self.holdout[tgt] = (float(base_ll), float(mdl_ll))
+                print(f"    {tgt:6}  base-rate {base:.3f} | "
+                      f"log-loss base->model {base_ll:.4f}->{mdl_ll:.4f} | "
+                      f"acc {acc:.3f} (base {base_acc:.3f})")
 
-        print("  Training assist model...")
-        self.assist_model = GradientBoostingRegressor(**params)
-        self.assist_model.fit(X_scaled, y_assist)
+            # Final model + calibrator on all data
+            self.models[tgt] = self._hgb().fit(X_np, y, sample_weight=sw)
+            oof = self._oof_proba(self._hgb, X_np, y, sw)
+            om = ~np.isnan(oof)
+            cal = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+            cal.fit(oof[om], y[om])
+            self.calibrators[tgt] = cal
 
-        print("  Training point model...")
-        self.point_model = GradientBoostingRegressor(**params)
-        self.point_model.fit(X_scaled, y_point)
-
-        self.trained_date     = datetime.now()
+        self.trained_date = datetime.now()
         self.training_players = len(X)
-
-        print(f"\n  Player model trained on {self.training_players} samples")
+        self._prior = self._accs = self._opp_ga = self._season = None
+        print(f"\n  Player model trained on {self.training_players} skater-games")
         self.save()
 
-    # -- Predict single player ---------------------------------
+    # ── Live-state helper ─────────────────────────────────────
+    def _ensure_live_state(self, con):
+        if self._accs is not None:
+            return
+        games = load_player_games(con)
+        self._accs  = compute_live_player_state(games)
+        self._prior = prior_season_rates(games)
+        # current opponent goals-against per game (season-to-date, all completed)
+        rows = con.execute("""
+            SELECT Season, TeamID, AVG(GA) AS ga_pg FROM (
+                SELECT Season, HomeTeamID AS TeamID, AwayScore AS GA
+                FROM Games WHERE HomeScore IS NOT NULL
+                UNION ALL
+                SELECT Season, AwayTeamID, HomeScore
+                FROM Games WHERE HomeScore IS NOT NULL
+            ) GROUP BY Season, TeamID
+        """).df()
+        self._opp_ga = {(r.Season, int(r.TeamID)): float(r.ga_pg)
+                        for r in rows.itertuples(index=False)}
+
+    def _predict_row(self, feats):
+        """Feature dict -> {goal,assist,point}_prob (calibrated)."""
+        X = pd.DataFrame([feats])[self.feature_names].to_numpy()
+        out = {}
+        for tgt in TARGETS:
+            raw = float(self.models[tgt].predict_proba(X)[0, 1])
+            cal = self.calibrators.get(tgt)
+            out[tgt] = float(np.clip(cal.predict([raw])[0], 0.0, 1.0)) if cal else raw
+        # A point requires a goal or assist -> keep coherent
+        out["point"] = max(out["point"], out["goal"], out["assist"])
+        return out
+
+    def _feats_for(self, player_id, opp_team_id, is_home, season, b2b, is_playoff=False):
+        acc   = self._accs.get((season, int(player_id)), _PlayerAcc())
+        prior = self._prior.get(season, {}).get(int(player_id))
+        opp_ga = self._opp_ga.get((season, int(opp_team_id)), 3.0)
+        return snapshot_player(acc, prior, opp_ga, is_home, b2b, is_playoff)
+
+    # ── Predict single player ─────────────────────────────────
     def predict_player(self, con, player_id, opp_team_id,
                        is_home, season, b2b=False,
                        players_df=None, teams_df=None, goalies_df=None):
-        """Predict for one player. Accepts pre-loaded DataFrames to avoid DB hits."""
-        if self.goal_model is None:
+        if not self.models:
             self.load()
-
-        if players_df is None:
-            players_df = get_player_features(con, season)
-        if teams_df is None:
-            teams_df = get_team_features(con, season)
-        if goalies_df is None:
-            goalies_df = get_goalie_features(con, season)
-
-        player = players_df[players_df["PlayerID"] == player_id]
-        if player.empty:
-            return None
-        player = player.iloc[0]
-
-        opp = teams_df[teams_df["TeamID"] == opp_team_id]
-        if opp.empty:
-            return None
-        opp = opp.iloc[0]
-
-        goalies_idx = goalies_df.set_index("TeamID")
-        opp_goalie  = goalies_idx.loc[opp_team_id] if opp_team_id in goalies_idx.index else None
-
-        feats    = self._build_feats(player, opp, opp_goalie, is_home)
-        feats["is_b2b"] = 1 if b2b else 0
-
-        X        = pd.DataFrame([feats])[self.feature_names]
-        X_scaled = self.scaler.transform(X)
-
-        goal_prob   = float(np.clip(self.goal_model.predict(X_scaled)[0],   0, 1))
-        assist_prob = float(np.clip(self.assist_model.predict(X_scaled)[0], 0, 1))
-        point_prob  = float(np.clip(self.point_model.predict(X_scaled)[0],  0, 1))
-        point_prob  = max(point_prob, goal_prob, assist_prob)
-
+        self._ensure_live_state(con)
+        feats = self._feats_for(player_id, opp_team_id, is_home, season, b2b)
+        p = self._predict_row(feats)
         return {
-            "player_id":   player_id,
-            "goal_prob":   round(goal_prob,   3),
-            "assist_prob": round(assist_prob, 3),
-            "point_prob":  round(point_prob,  3),
+            "player_id":   int(player_id),
+            "goal_prob":   round(p["goal"],   3),
+            "assist_prob": round(p["assist"], 3),
+            "point_prob":  round(p["point"],  3),
         }
 
-    # -- Predict full team -------------------------------------
+    # ── Predict full team ─────────────────────────────────────
     def predict_team_players(self, con, team_id, opp_team_id,
-                              is_home, season, b2b=False, top_n=10,
-                              players_df=None, teams_df=None, goalies_df=None):
-        """Predict all confirmed active players for a team. Batch-friendly."""
-        if self.goal_model is None:
+                             is_home, season, b2b=False, top_n=10,
+                             players_df=None, teams_df=None, goalies_df=None):
+        """Predict all confirmed-active skaters for a team. Roster/names come
+        from players_df; probabilities come from point-in-time game-log state."""
+        if not self.models:
             self.load()
+        self._ensure_live_state(con)
 
-        # Load data once if not passed in
         if players_df is None:
             players_df = get_player_features(con, season)
-        if teams_df is None:
-            teams_df = get_team_features(con, season)
-        if goalies_df is None:
-            goalies_df = get_goalie_features(con, season)
 
-        lineup      = get_confirmed_lineup(con, team_id)
+        lineup = get_confirmed_lineup(con, team_id)
         team_players = players_df[players_df["TeamID"] == team_id]
-
-        opp = teams_df[teams_df["TeamID"] == opp_team_id]
-        opp_row = opp.iloc[0] if not opp.empty else None
-
-        goalies_idx = goalies_df.set_index("TeamID")
-        opp_goalie  = goalies_idx.loc[opp_team_id] if opp_team_id in goalies_idx.index else None
 
         results = []
         for _, player in team_players.iterrows():
-            pid    = int(player["PlayerID"])
+            pid = int(player["PlayerID"])
             status = lineup.get(pid, {}).get("status", "Active")
             if status in ("Injured", "Out", "Healthy Scratch"):
                 continue
 
-            feats = self._build_feats(player, opp_row, opp_goalie, is_home)
-            feats["is_b2b"] = 1 if b2b else 0
-
-            X        = pd.DataFrame([feats])[self.feature_names].fillna(0)
-            X_scaled = self.scaler.transform(X)
-
-            goal_prob   = float(np.clip(self.goal_model.predict(X_scaled)[0],   0, 1))
-            assist_prob = float(np.clip(self.assist_model.predict(X_scaled)[0], 0, 1))
-            point_prob  = float(np.clip(self.point_model.predict(X_scaled)[0],  0, 1))
-            point_prob  = max(point_prob, goal_prob, assist_prob)
+            feats = self._feats_for(pid, opp_team_id, is_home, season, b2b)
+            p = self._predict_row(feats)
 
             results.append({
-                "player_id":   pid,
-                "player_name": player["PlayerName"],
-                "position":    player["Position"],
-                "toi_per_game":player["TOI_Per_Game"],
-                "status":      status,
-                "goal_prob":   round(goal_prob,   3),
-                "assist_prob": round(assist_prob, 3),
-                "point_prob":  round(point_prob,  3),
-                "ixG_per60":   player["ixG_Per60"],
+                "player_id":    pid,
+                "player_name":  player["PlayerName"],
+                "position":     player["Position"],
+                "toi_per_game": player.get("TOI_Per_Game", 0.0),
+                "status":       status,
+                "goal_prob":    round(p["goal"],   3),
+                "assist_prob":  round(p["assist"], 3),
+                "point_prob":   round(p["point"],  3),
+                "ixG_per60":    float(player.get("ixG_Per60", 0.0) or 0.0),
             })
 
         if not results:
             return [], 0.0
 
         df = pd.DataFrame(results).sort_values("point_prob", ascending=False)
-        forwards = df[df["position"].isin(["C","L","LW","R","RW","F"])]
+        forwards = df[df["position"].isin(["C", "L", "LW", "R", "RW", "F"])]
+        # Sum of P(>=1 goal) over the top forwards ~ expected number of goal
+        # scorers, a reasonable projected-goals proxy.
         team_proj_goals = float(forwards.head(12)["goal_prob"].sum())
-
         return df.head(top_n).to_dict("records"), round(team_proj_goals, 2)
 
-    # -- Save / Load -------------------------------------------
+    # ── Save / Load ───────────────────────────────────────────
     def save(self, path=MODEL_FILE):
         with open(path, "wb") as f:
             pickle.dump({
-                "goal_model":       self.goal_model,
-                "assist_model":     self.assist_model,
-                "point_model":      self.point_model,
-                "scaler":           self.scaler,
-                "feature_names":    self.feature_names,
-                "trained_date":     self.trained_date,
+                "models":        self.models,
+                "calibrators":   self.calibrators,
+                "feature_names": self.feature_names,
+                "trained_date":  self.trained_date,
                 "training_players": self.training_players,
+                "holdout":       self.holdout,
             }, f)
         print(f"  Player model saved -> {path}")
 
     def load(self, path=MODEL_FILE):
         with open(path, "rb") as f:
             d = pickle.load(f)
-        self.goal_model       = d["goal_model"]
-        self.assist_model     = d["assist_model"]
-        self.point_model      = d["point_model"]
-        self.scaler           = d["scaler"]
-        self.feature_names    = d["feature_names"]
-        self.trained_date     = d["trained_date"]
+        self.models        = d["models"]
+        self.calibrators   = d.get("calibrators", {})
+        self.feature_names = d["feature_names"]
+        self.trained_date  = d["trained_date"]
         self.training_players = d["training_players"]
-        print(f"  Player model loaded (trained {self.trained_date.strftime('%Y-%m-%d')})")
+        self.holdout       = d.get("holdout", {})
+        self._prior = self._accs = self._opp_ga = self._season = None
+        td = self.trained_date.strftime("%Y-%m-%d") if self.trained_date else "?"
+        print(f"  Player model loaded (trained {td})")
         return self
 
 
