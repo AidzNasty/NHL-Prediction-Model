@@ -117,6 +117,7 @@ team_id_to_abbrev = {r[0]: HR_ABBREV.get(r[1], "") for r in team_rows}
 where_clauses = [
     "gs.GameID IS NULL",
     "g.GameType <> 'Preseason'",
+    "g.HomeScore IS NOT NULL",
     f"g.GameDate <= '{date.today()}'"
 ]
 
