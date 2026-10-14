@@ -17,6 +17,7 @@ import math
 import time
 import threading
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pandas as pd
@@ -31,6 +32,12 @@ TOKEN = os.getenv("MOTHERDUCK_TOKEN")
 DB = os.getenv("MOTHERDUCK_DB", "my_db")
 SEASON = "2026-27"
 PLAYOFF_SEASON = "2025-26"   # most recent playoffs; switch to SEASON once 2027 playoffs start
+
+
+# Game dates are stored in Eastern time; the host server runs on UTC,
+# which rolls over to tomorrow at 8 PM ET.
+def today_et():
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
@@ -204,7 +211,7 @@ def api_refresh():
 def api_today():
     """Today's predicted games. Falls back to the most recent prediction date
     if there are none for the literal calendar today (off-season friendly)."""
-    today = str(date.today())
+    today = str(today_et())
     day = today
     preds = _today_query(day)
     fallback = False
@@ -294,7 +301,7 @@ def _today_query(day):
 
 @app.get("/api/player-props")
 def api_player_props():
-    today = str(date.today())
+    today = str(today_et())
     day = today
     players = _props_query(day)
     if players.empty:

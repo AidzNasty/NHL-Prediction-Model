@@ -10,10 +10,16 @@ import numpy as np
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Game dates are stored in Eastern time; the host server runs on UTC,
+# which rolls over to tomorrow at 8 PM ET.
+def today_et():
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 # Support both local .env and Streamlit Cloud secrets
 def get_token():
@@ -197,14 +203,14 @@ with st.sidebar:
         st.markdown("*Model info unavailable*")
 
     st.markdown("---")
-    st.caption("Data: Natural Stat Trick, NHL API\nModel: RF + GB Ensemble (60/40)\nCV Accuracy: 60.5% ±1.8%")
+    st.caption("Data: NHL API, Hockey Reference\nModel: point-in-time team + player models\nHoldout accuracy: 57.8%")
 
 # ═══════════════════════════════════════════════════════════════
 # PAGE 1 — TODAY'S GAMES
 # ═══════════════════════════════════════════════════════════════
 if page == "Today's Games":
     st.title("TODAY'S GAMES")
-    today = date.today()
+    today = today_et()
     st.caption(today.strftime("%A, %B %d, %Y"))
     streaks = get_all_streaks()
 
@@ -391,7 +397,7 @@ if page == "Today's Games":
 # ═══════════════════════════════════════════════════════════════
 elif page == "Player Props":
     st.title("PLAYER PROPS")
-    today = date.today()
+    today = today_et()
     st.caption(f"Projections for {today.strftime('%B %d, %Y')}")
 
     # Build query based on whether actuals columns exist
