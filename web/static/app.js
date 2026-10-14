@@ -352,7 +352,7 @@ async function pageAccuracy() {
     let html = pageHead('MODEL ACCURACY') + `<div class="kpi-row">
       ${kpi('Season Accuracy', d.completed ? d.accuracy + '%' : '—', null, d.accuracy >= 60 ? 'good' : d.accuracy >= 50 ? 'warn' : 'bad')}
       ${kpi('Correct / Completed', `${d.correct} / ${d.completed}`)}
-      ${kpi('CV Accuracy (5-fold)', d.cv)}
+      ${kpi('Holdout Accuracy', d.cv)}
       ${kpi('Total Predictions', d.total)}
     </div>
     <div class="section-title">ACCURACY BY CONFIDENCE TIER</div>
@@ -625,7 +625,7 @@ const GUIDE = {
     ['GSAX Differential', 'Difference in Goals Saved Above Expected between the two goalies.', 'GSAX Diff = Home GSAX − Away GSAX', 'Captures goalie-matchup quality. Large positive = home goaltending edge.'],
     ['HomeIce Differential', 'Composite home-ice score from historical home win rate vs league baseline.', 'From team-specific home W% vs league baseline', 'Adjusts the baseline per matchup — some arenas confer a bigger edge than others.'],
     ['Back-to-Back Flag', 'Whether a team is playing its second game in two nights.', 'B2B = 1 if a game was played the previous day', 'B2B meaningfully lowers win probability, especially with travel. Applied separately for home/away.'],
-    ['Model Confidence %', 'Ensemble probability that the predicted winner actually wins.', 'Confidence = max(P(home win), P(away win))', '≥65% High (green) · 55–65% Medium (yellow) · <55% Low (red). Historical CV accuracy 60.5%.'],
+    ['Model Confidence %', 'Ensemble probability that the predicted winner actually wins.', 'Confidence = max(P(home win), P(away win))', '≥65% High (green) · 55–65% Medium (yellow) · <55% Low (red). Holdout accuracy 57.8%.'],
   ],
 };
 let guideTab = 'Possession & Shot Quality';

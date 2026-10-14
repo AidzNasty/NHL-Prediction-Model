@@ -397,7 +397,7 @@ def api_accuracy():
     return jsonify({
         "accuracy": pct(correct, completed),
         "correct": correct, "completed": completed, "total": total,
-        "cv": "60.5% ±1.8%",
+        "cv": "57.8%",
         "tiers": tiers,
         "recent": records(recent),
         "rolling": rolling,

@@ -520,7 +520,7 @@ elif page == "Model Accuracy":
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Season Accuracy", f"{acc:.1f}%" if completed > 0 else "—")
         c2.metric("Correct / Completed", f"{correct} / {completed}")
-        c3.metric("CV Accuracy (5-fold)", "60.5% ±1.8%")
+        c3.metric("Holdout Accuracy", "57.8%")
         c4.metric("Total Predictions", total)
 
         st.divider()
@@ -544,7 +544,7 @@ elif page == "Model Accuracy":
             range_color=[45, 75],
         )
         fig2.add_hline(y=50, line_dash="dot",  line_color="#6B7280", annotation_text="Coin flip")
-        fig2.add_hline(y=60.5, line_dash="dash", line_color="#00B4D8", annotation_text="CV baseline")
+        fig2.add_hline(y=57.8, line_dash="dash", line_color="#00B4D8", annotation_text="Holdout baseline")
         fig2.update_layout(
             paper_bgcolor="#0A0E1A", plot_bgcolor="#111827",
             font=dict(color="#F9FAFB"),
@@ -593,8 +593,8 @@ elif page == "Model Accuracy":
             if len(rolling) >= 5:
                 rolling["Rolling"] = rolling["MLCorrect"].rolling(10, min_periods=1).mean() * 100
                 fig3 = px.line(rolling, x="Date", y="Rolling", line_shape="spline")
-                fig3.add_hline(y=60.5, line_dash="dash", line_color="#00B4D8",
-                               annotation_text="CV 60.5%")
+                fig3.add_hline(y=57.8, line_dash="dash", line_color="#00B4D8",
+                               annotation_text="Holdout 57.8%")
                 fig3.add_hline(y=50, line_dash="dot", line_color="#6B7280",
                                annotation_text="Coin flip")
                 fig3.update_traces(line_color="#00B4D8", line_width=2)
@@ -1076,7 +1076,7 @@ elif page == "Stats Guide":
             ("Model Confidence %",
              "The ensemble model's estimated probability that the predicted winner actually wins, expressed as a percentage.",
              "Confidence = max(P(home win), P(away win)) from the RF + GB ensemble",
-             ">=65% = High confidence (green). 55-65% = Medium (yellow). <55% = Low (red). Historical CV accuracy is 60.5%."),
+             ">=65% = High confidence (green). 55-65% = Medium (yellow). <55% = Low (red). Holdout accuracy (late 2025-26 games) is 57.8%."),
         ]
 
         for name, what, formula, interpretation in stats3:
