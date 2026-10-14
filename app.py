@@ -126,12 +126,12 @@ def get_all_streaks():
                 SELECT HomeTeamID AS TeamID,
                        CASE WHEN WinnerTeamID = HomeTeamID THEN 1 ELSE -1 END AS result,
                        GameDate
-                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2025-26'
+                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2026-27' AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT AwayTeamID,
                        CASE WHEN WinnerTeamID = AwayTeamID THEN 1 ELSE -1 END,
                        GameDate
-                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2025-26'
+                FROM Games WHERE HomeScore IS NOT NULL AND Season = '2026-27' AND GameType <> 'Preseason'
             ) ORDER BY TeamID, GameDate DESC
         """).df()
         con.close()
@@ -182,7 +182,7 @@ with st.sidebar:
                 COUNT(*)                                                   AS total,
                 SUM(CASE WHEN ActualWinner IS NOT NULL THEN 1 ELSE 0 END) AS completed,
                 SUM(CASE WHEN MLCorrect = 1 THEN 1 ELSE 0 END)            AS correct
-            FROM Predictions WHERE Season = '2025-26'
+            FROM Predictions WHERE Season = '2026-27'
         """).fetchone()
         _con.close()
         last_run, total, completed, correct = info
@@ -498,7 +498,7 @@ elif page == "Model Accuracy":
                 SUM(CASE WHEN ModelConfidencePct < 55
                      AND ActualWinner IS NOT NULL  THEN 1 ELSE 0 END)  AS low_t
             FROM Predictions
-            WHERE Season = '2025-26' AND PredictedWinner IS NOT NULL
+            WHERE Season = '2026-27' AND PredictedWinner IS NOT NULL
         """).fetchone()
         _con2.close()
 
@@ -567,7 +567,7 @@ elif page == "Model Accuracy":
             FROM Predictions p
             JOIN Teams ht  ON p.HomeTeamID = ht.TeamID
             JOIN Teams awt ON p.AwayTeamID = awt.TeamID
-            WHERE p.Season = '2025-26' AND p.PredictedWinner IS NOT NULL
+            WHERE p.Season = '2026-27' AND p.PredictedWinner IS NOT NULL
             ORDER BY p.PredictionDate DESC
             LIMIT 25
         """)
@@ -580,7 +580,7 @@ elif page == "Model Accuracy":
             rolling = q("""
                 SELECT CAST(PredictionDate AS DATE) AS Date, MLCorrect
                 FROM Predictions
-                WHERE Season = '2025-26' AND ActualWinner IS NOT NULL
+                WHERE Season = '2026-27' AND ActualWinner IS NOT NULL
                   AND MLCorrect IS NOT NULL
                 ORDER BY PredictionDate
             """)
@@ -612,7 +612,7 @@ elif page == "Model Accuracy":
 elif page == "Team Stats":
     st.title("TEAM STATS")
 
-    season = st.selectbox("Season", ["2025-26", "2024-25"])
+    season = st.selectbox("Season", ["2026-27", "2025-26", "2024-25"])
 
     teams_df = q(f"""
         WITH game_goals AS (
@@ -623,11 +623,11 @@ elif page == "Team Stats":
             FROM (
                 SELECT HomeTeamID AS TeamID, HomeScore AS GF, AwayScore AS GA
                 FROM Games
-                WHERE Season = '{season}' AND HomeScore IS NOT NULL
+                WHERE Season = '{season}' AND HomeScore IS NOT NULL AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT AwayTeamID AS TeamID, AwayScore AS GF, HomeScore AS GA
                 FROM Games
-                WHERE Season = '{season}' AND AwayScore IS NOT NULL
+                WHERE Season = '{season}' AND AwayScore IS NOT NULL AND GameType <> 'Preseason'
             )
             GROUP BY TeamID
         )
@@ -721,11 +721,11 @@ elif page == "Hot & Cold Streaks":
                 FROM (
                     SELECT HomeTeamID AS TeamID, GameDate, HomeScore, AwayScore,
                            WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
-                    FROM Games WHERE Season = '2025-26' AND HomeScore IS NOT NULL
+                    FROM Games WHERE Season = '2026-27' AND HomeScore IS NOT NULL AND GameType <> 'Preseason'
                     UNION ALL
                     SELECT AwayTeamID AS TeamID, GameDate, HomeScore, AwayScore,
                            WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
-                    FROM Games WHERE Season = '2025-26' AND AwayScore IS NOT NULL
+                    FROM Games WHERE Season = '2026-27' AND AwayScore IS NOT NULL AND GameType <> 'Preseason'
                 )
             ),
             last10 AS (
@@ -752,7 +752,7 @@ elif page == "Hot & Cold Streaks":
                 CAST(l.LastGame AS DATE) AS "Last Game"
             FROM last10 l
             JOIN Teams t ON l.TeamID = t.TeamID
-            JOIN TeamStandings ts ON ts.TeamID = t.TeamID AND ts.Season = '2025-26'
+            JOIN TeamStandings ts ON ts.TeamID = t.TeamID AND ts.Season = '2026-27'
             ORDER BY l.W10 DESC, l.OTL10 DESC
         """)
 
@@ -870,7 +870,7 @@ elif page == "Hot & Cold Streaks":
                 FROM PlayerGameLog gl
                 JOIN Players pl ON gl.PlayerID = pl.PlayerID
                 JOIN Teams t    ON pl.TeamID   = t.TeamID
-                WHERE gl.Season = '2025-26'
+                WHERE gl.Season = '2026-27'
                   {pos_clause}
                   {team_clause}
             )

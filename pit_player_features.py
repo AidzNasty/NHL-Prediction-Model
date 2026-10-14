@@ -75,7 +75,8 @@ def load_player_games(con):
         JOIN Games   g ON pl.GameID   = g.GameID
         WHERE p.Position != 'G'
           AND pl.TOI > 0
-          AND pl.Season IN ('2024-25', '2025-26')
+          AND pl.Season IN ('2024-25', '2025-26', '2026-27')
+          AND pl.GameType <> 'Preseason'
         ORDER BY pl.GameDate ASC, pl.GameID ASC, pl.PlayerID ASC
     """).df()
     df["GameDate"] = pd.to_datetime(df["GameDate"])
@@ -89,10 +90,10 @@ def build_opp_defense(con):
     """
     rows = con.execute("""
         SELECT GameID, Season, GameDate, HomeTeamID AS TeamID, AwayScore AS GA
-        FROM Games WHERE HomeScore IS NOT NULL AND Season IN ('2024-25','2025-26')
+        FROM Games WHERE HomeScore IS NOT NULL AND Season IN ('2024-25','2025-26','2026-27') AND GameType <> 'Preseason'
         UNION ALL
         SELECT GameID, Season, GameDate, AwayTeamID, HomeScore
-        FROM Games WHERE HomeScore IS NOT NULL AND Season IN ('2024-25','2025-26')
+        FROM Games WHERE HomeScore IS NOT NULL AND Season IN ('2024-25','2025-26','2026-27') AND GameType <> 'Preseason'
         ORDER BY GameDate ASC, GameID ASC
     """).df()
     out = {}
@@ -125,7 +126,7 @@ def prior_season_rates(games_df):
             }
         per_season[season] = d
     # Map each season to the PRIOR season's dict
-    order = ["2024-25", "2025-26"]
+    order = ["2024-25", "2025-26", "2026-27"]
     prior = {}
     for i, s in enumerate(order):
         prior[s] = per_season.get(order[i - 1]) if i > 0 else {}

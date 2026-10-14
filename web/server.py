@@ -29,7 +29,8 @@ load_dotenv()  # also honour a .env in CWD
 
 TOKEN = os.getenv("MOTHERDUCK_TOKEN")
 DB = os.getenv("MOTHERDUCK_DB", "my_db")
-SEASON = "2025-26"
+SEASON = "2026-27"
+PLAYOFF_SEASON = "2025-26"   # most recent playoffs; switch to SEASON once 2027 playoffs start
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
@@ -130,12 +131,12 @@ def get_all_streaks():
                 SELECT HomeTeamID AS TeamID,
                        CASE WHEN WinnerTeamID = HomeTeamID THEN 1 ELSE -1 END AS result,
                        GameDate
-                FROM Games WHERE HomeScore IS NOT NULL AND Season = '{SEASON}'
+                FROM Games WHERE HomeScore IS NOT NULL AND Season = '{SEASON}' AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT AwayTeamID,
                        CASE WHEN WinnerTeamID = AwayTeamID THEN 1 ELSE -1 END,
                        GameDate
-                FROM Games WHERE AwayScore IS NOT NULL AND Season = '{SEASON}'
+                FROM Games WHERE AwayScore IS NOT NULL AND Season = '{SEASON}' AND GameType <> 'Preseason'
             ) ORDER BY TeamID, GameDate DESC
         """)
         streaks = {}
@@ -399,17 +400,17 @@ def api_accuracy():
 @app.get("/api/team-stats")
 def api_team_stats():
     season = request.args.get("season", SEASON)
-    if season not in (SEASON, "2024-25"):
+    if season not in (SEASON, "2025-26", "2024-25"):
         season = SEASON
     teams = q(f"""
         WITH game_goals AS (
             SELECT TeamID, SUM(GF) AS total_GF, SUM(GA) AS total_GA, COUNT(*) AS total_GP
             FROM (
                 SELECT HomeTeamID AS TeamID, HomeScore AS GF, AwayScore AS GA
-                FROM Games WHERE Season = '{season}' AND HomeScore IS NOT NULL
+                FROM Games WHERE Season = '{season}' AND HomeScore IS NOT NULL AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT AwayTeamID AS TeamID, AwayScore AS GF, HomeScore AS GA
-                FROM Games WHERE Season = '{season}' AND AwayScore IS NOT NULL
+                FROM Games WHERE Season = '{season}' AND AwayScore IS NOT NULL AND GameType <> 'Preseason'
             ) GROUP BY TeamID
         )
         SELECT
@@ -449,10 +450,10 @@ def api_streaks_teams():
                 ROW_NUMBER() OVER (PARTITION BY TeamID ORDER BY GameDate DESC) AS rn
             FROM (
                 SELECT HomeTeamID AS TeamID, GameDate, HomeScore, AwayScore, WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
-                FROM Games WHERE Season = '{SEASON}' AND HomeScore IS NOT NULL
+                FROM Games WHERE Season = '{SEASON}' AND HomeScore IS NOT NULL AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT AwayTeamID AS TeamID, GameDate, HomeScore, AwayScore, WinnerTeamID, OvertimeFlag, HomeTeamID, AwayTeamID
-                FROM Games WHERE Season = '{SEASON}' AND AwayScore IS NOT NULL
+                FROM Games WHERE Season = '{SEASON}' AND AwayScore IS NOT NULL AND GameType <> 'Preseason'
             )
         ),
         last10 AS (
@@ -570,14 +571,14 @@ def api_playoffs():
         JOIN Teams t1 ON g.AwayTeamID = t1.TeamID
         JOIN Teams t2 ON g.HomeTeamID = t2.TeamID
         LEFT JOIN Teams t3 ON g.WinnerTeamID = t3.TeamID
-        WHERE g.GameType = 'Playoffs' AND g.Season = '{SEASON}'
+        WHERE g.GameType = 'Playoffs' AND g.Season = '{PLAYOFF_SEASON}'
         ORDER BY g.GameDate
     """, ttl=300)
     strength_df = q(f"""
         SELECT ts.TeamID, t.TeamName, t.Conference, t.Abbreviation,
             ts.Point_Pct, ts.xGF_Pct, ts.GF, ts.GA, ts.GP
         FROM TeamStandings ts JOIN Teams t ON ts.TeamID = t.TeamID
-        WHERE ts.Season = '{SEASON}'
+        WHERE ts.Season = '{PLAYOFF_SEASON}'
     """, ttl=300)
 
     if playoff_df.empty:

@@ -5,17 +5,17 @@ Foundation module — pulls and builds all feature vectors
 from MotherDuck for use in both the team and player models.
 
 Provides:
-    get_connection()           -> DuckDB connection
-    get_team_features(con, season)    -> DataFrame of team-level features
-    get_player_features(con, season)  -> DataFrame of player-level features
-    get_goalie_features(con, season)  -> DataFrame of goalie-level features
-    get_completed_games(con)          -> DataFrame of all completed games (training)
-    get_todays_games(con)             -> DataFrame of today's scheduled games
-    get_confirmed_lineup(con, game_id)-> Dict of confirmed players per team
+    get_connection()           → DuckDB connection
+    get_team_features(con, season)    → DataFrame of team-level features
+    get_player_features(con, season)  → DataFrame of player-level features
+    get_goalie_features(con, season)  → DataFrame of goalie-level features
+    get_completed_games(con)          → DataFrame of all completed games (training)
+    get_todays_games(con)             → DataFrame of today's scheduled games
+    get_confirmed_lineup(con, game_id)→ Dict of confirmed players per team
     build_game_features(con, home_team_id, away_team_id, season, game_date)
-                                      -> Feature dict ready for model input
+                                      → Feature dict ready for model input
     build_player_game_features(con, player_id, opp_team_id, is_home, season)
-                                      -> Feature dict for player model
+                                      → Feature dict for player model
 """
 
 import os
@@ -29,12 +29,12 @@ load_dotenv()
 TOKEN = os.getenv("MOTHERDUCK_TOKEN")
 DB    = os.getenv("MOTHERDUCK_DB", "my_db")
 
-# -- Connection ------------------------------------------------
+# ── Connection ────────────────────────────────────────────────
 def get_connection():
     return duckdb.connect(f"md:{DB}?motherduck_token={TOKEN}")
 
-# -- Team Features ---------------------------------------------
-def get_team_features(con, season="2025-26"):
+# ── Team Features ─────────────────────────────────────────────
+def get_team_features(con, season="2026-27"):
     """
     Returns a DataFrame with one row per team containing
     all team-level advanced stats from TeamStandings.
@@ -102,8 +102,8 @@ def get_team_features(con, season="2025-26"):
     """).df()
     return df
 
-# -- Goalie Features -------------------------------------------
-def get_goalie_features(con, season="2025-26"):
+# ── Goalie Features ───────────────────────────────────────────
+def get_goalie_features(con, season="2026-27"):
     """
     Returns best goalie stats per team (by games played).
     Uses GSAX as primary quality metric.
@@ -137,8 +137,8 @@ def get_goalie_features(con, season="2025-26"):
     starters = df[df["starter_rank"] == 1].drop(columns=["starter_rank"])
     return starters
 
-# -- Player Features -------------------------------------------
-def get_player_features(con, season="2025-26"):
+# ── Player Features ───────────────────────────────────────────
+def get_player_features(con, season="2026-27"):
     """
     Returns player-level advanced stats for all active skaters.
     Per-60 rates calculated where possible.
@@ -193,7 +193,7 @@ def get_player_features(con, season="2025-26"):
     """).df()
     return df
 
-# -- Completed Games (training data) --------------------------
+# ── Completed Games (training data) ──────────────────────────
 def get_completed_games(con):
     """
     Returns all completed games across both seasons
@@ -219,12 +219,13 @@ def get_completed_games(con):
         JOIN Teams awt ON g.AwayTeamID = awt.TeamID
         WHERE g.HomeScore IS NOT NULL
           AND g.AwayScore IS NOT NULL
-          AND g.Season IN ('2024-25', '2025-26')
+          AND g.Season IN ('2024-25', '2025-26', '2026-27')
+          AND g.GameType <> 'Preseason'
         ORDER BY g.GameDate ASC
     """).df()
     return df
 
-# -- Today's Games ---------------------------------------------
+# ── Today's Games ─────────────────────────────────────────────
 def get_todays_games(con, target_date=None):
     """
     Returns today's scheduled games (or target_date if specified).
@@ -254,7 +255,7 @@ def get_todays_games(con, target_date=None):
     """).df()
     return df
 
-# -- Confirmed Lineup ------------------------------------------
+# ── Confirmed Lineup ──────────────────────────────────────────
 def get_confirmed_lineup(con, team_id):
     """
     Returns confirmed active/inactive players for a team
@@ -285,7 +286,7 @@ def get_confirmed_lineup(con, team_id):
             }
     return lineup
 
-# -- Rolling 10-Game Team Stats --------------------------------
+# ── Rolling 10-Game Team Stats ────────────────────────────────
 def get_team_rolling_stats(con, team_id, before_date, n=10):
     """
     Calculates team performance over last N games before a given date.
@@ -322,7 +323,7 @@ def get_team_rolling_stats(con, team_id, before_date, n=10):
                        HomeScore, AwayScore, OvertimeFlag
                 FROM Games
                 WHERE (HomeTeamID = {team_id} OR AwayTeamID = {team_id})
-                  AND HomeScore IS NOT NULL
+                  AND HomeScore IS NOT NULL AND GameType <> 'Preseason'
                   AND GameDate < '{before_date}'
                 ORDER BY GameDate DESC
                 LIMIT {n}
@@ -366,7 +367,7 @@ def _default_rolling():
     }
 
 
-def get_team_streak(con, team_id, season="2025-26"):
+def get_team_streak(con, team_id, season="2026-27"):
     """
     Returns current consecutive win/loss streak as a signed integer.
     +5 = W5 (won last 5), -3 = L3 (lost last 3).
@@ -376,7 +377,7 @@ def get_team_streak(con, team_id, season="2025-26"):
         FROM Games
         WHERE (HomeTeamID = {team_id} OR AwayTeamID = {team_id})
           AND HomeScore IS NOT NULL
-          AND Season = '{season}'
+          AND Season = '{season}' AND GameType <> 'Preseason'
         ORDER BY GameDate DESC
         LIMIT 20
     """).fetchall()
@@ -404,7 +405,7 @@ def calc_homeice_differential(home_team_row, away_team_row):
     away_awp = away_team_row.get("AwayWinPct", 0.5) or 0.5
     return round((home_hwp - away_awp) * 6, 3)
 
-# -- Build Game Feature Vector ---------------------------------
+# ── Build Game Feature Vector ─────────────────────────────────
 def build_game_features(con, home_team_id, away_team_id, season,
                         home_b2b=False, away_b2b=False):
     """
@@ -602,7 +603,7 @@ def build_game_features(con, home_team_id, away_team_id, season,
 
     return features
 
-# -- Build Player Game Feature Vector -------------------------
+# ── Build Player Game Feature Vector ─────────────────────────
 def build_player_game_features(con, player_id, opp_team_id,
                                 is_home, season, b2b=False):
     """
@@ -664,7 +665,7 @@ def build_player_game_features(con, player_id, opp_team_id,
 
     return features
 
-# -- Quick sanity check when run directly ---------------------
+# ── Quick sanity check when run directly ─────────────────────
 if __name__ == "__main__":
     print("Connecting to MotherDuck...")
     con = get_connection()

@@ -34,7 +34,7 @@ parser.add_argument("--predict-only", action="store_true")
 parser.add_argument("--date", type=str, default=None)
 args = parser.parse_args()
 
-SEASON = "2025-26"
+SEASON = "2026-27"
 
 print("\n" + "="*70)
 print("NHL DAILY TRAIN + PREDICT")
@@ -376,7 +376,7 @@ stats = con.execute("""
         SUM(CASE WHEN MLCorrect = 0
              AND ActualWinner IS NOT NULL THEN 1 ELSE 0 END)  AS wrong
     FROM Predictions
-    WHERE Season = '2025-26'
+    WHERE Season = '2026-27'
       AND PredictedWinner IS NOT NULL
 """).fetchone()
 

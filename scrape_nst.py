@@ -40,6 +40,7 @@ HEADERS = {
 }
 
 SEASON_PARAMS = {
+    "2026-27": {"fromseason": "20262027", "thruseason": "20262027"},
     "2025-26": {"fromseason": "20252026", "thruseason": "20252026"},
     "2024-25": {"fromseason": "20242025", "thruseason": "20242025"},
 }

@@ -397,7 +397,7 @@ const TEAM_VIEWS = {
 };
 async function pageTeams() {
   root.innerHTML = pageHead('TEAM STATS') + spinner();
-  await loadTeams('2025-26');
+  await loadTeams('2026-27');
 }
 async function loadTeams(season) {
   try {
@@ -406,7 +406,7 @@ async function loadTeams(season) {
     if (!d.teams.length) { root.innerHTML = pageHead('TEAM STATS') + notice('No team stats available.'); return; }
     root.innerHTML = pageHead('TEAM STATS') + `
       <div class="filters">
-        <div class="field"><label>Season</label><select id="fSeason"><option ${season === '2025-26' ? 'selected' : ''}>2025-26</option><option ${season === '2024-25' ? 'selected' : ''}>2024-25</option></select></div>
+        <div class="field"><label>Season</label><select id="fSeason"><option ${season === '2026-27' ? 'selected' : ''}>2026-27</option><option ${season === '2025-26' ? 'selected' : ''}>2025-26</option><option ${season === '2024-25' ? 'selected' : ''}>2024-25</option></select></div>
         <div class="field"><label>View</label><div class="seg" id="viewSeg">${Object.keys(TEAM_VIEWS).map(v => `<button class="${v === teamView ? 'active' : ''}" data-v="${v}">${v}</button>`).join('')}</div></div>
       </div>
       <div id="teamTable"></div>

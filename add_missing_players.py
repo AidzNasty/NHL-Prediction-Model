@@ -65,9 +65,11 @@ db_players = con.execute("""
 # Build lookups: (norm_full, abbrev) and (norm_last, abbrev)
 by_full_team = {}
 by_last_team = {}
+by_full = {}   # norm_full -> [PlayerID, ...] across all teams (to detect team changes)
 for pid, first, last, abbrev in db_players:
     norm_full = normalize(f"{first} {last}")
     norm_last = normalize(last)
+    by_full.setdefault(norm_full, []).append(pid)
     by_full_team[(norm_full, abbrev)] = pid
     # setdefault: keep first match for last name (avoids overwriting with different player)
     by_last_team.setdefault((norm_last, abbrev), pid)
@@ -79,6 +81,8 @@ teams = con.execute("SELECT TeamID, TeamName, Abbreviation FROM Teams ORDER BY A
 next_pid = con.execute("SELECT COALESCE(MAX(PlayerID), 0) + 1 FROM Players").fetchone()[0]
 
 inserted  = 0
+moved     = 0
+moves     = []   # (PlayerID, new TeamID, jersey), applied after the scan
 skipped   = 0
 
 print("Scanning NHL API rosters for missing players...\n")
@@ -119,9 +123,21 @@ for team_id, team_name, abbrev in teams:
             skipped += 1
             continue
 
+        jersey = safe_int(p.get("sweaterNumber"))
+
+        # Same player already in DB on another team (trade / signing) — move him
+        if len(by_full.get(norm_full, [])) == 1:
+            moved_pid = by_full[norm_full][0]
+            moves.append((moved_pid, team_id, jersey))
+            print(f"  [MOVE] {first_store} {last_store} -> {abbrev} (PlayerID={moved_pid})")
+            by_full_team[(norm_full, abbrev)] = moved_pid
+            by_last_team.setdefault((norm_last, abbrev), moved_pid)
+            moved += 1
+            team_added += 1
+            continue
+
         # Truly missing — insert
         pos    = safe_str(p.get("positionCode"))
-        jersey = safe_int(p.get("sweaterNumber"))
         height = safe_int(p.get("heightInInches"))
         weight = safe_int(p.get("weightInPounds"))
         dob    = safe_str(p.get("birthDate"))
@@ -151,7 +167,28 @@ for team_id, team_name, abbrev in teams:
 
     time.sleep(0.3)
 
+# ── Apply team changes ───────────────────────────────────────
+# DuckDB rejects UPDATEs on Players rows still referenced by FK tables,
+# so stash the child rows, delete them, update Players, then put them back.
+if moves:
+    ids = ",".join(str(m[0]) for m in moves)
+    child_tables = ["PlayerStats", "GoalieStats", "PlayerContracts"]
+    stash = {t: con.execute(f"SELECT * FROM {t} WHERE PlayerID IN ({ids})").df() for t in child_tables}
+    for t in child_tables:
+        con.execute(f"DELETE FROM {t} WHERE PlayerID IN ({ids})")
+    try:
+        for pid, new_team, jersey in moves:
+            con.execute("UPDATE Players SET TeamID = ?, JerseyNumber = COALESCE(?, JerseyNumber) WHERE PlayerID = ?",
+                        [new_team, jersey, pid])
+    finally:
+        for t, df in stash.items():
+            if not df.empty:
+                con.register("stash_df", df)
+                con.execute(f"INSERT INTO {t} SELECT * FROM stash_df")
+                con.unregister("stash_df")
+
 print(f"\n{'='*55}")
+print(f"  Players moved (team change): {moved}")
 print(f"  Players inserted: {inserted}")
 print(f"  Already in DB:    {skipped}")
 print(f"  New max PlayerID: {next_pid - 1}")

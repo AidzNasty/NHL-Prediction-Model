@@ -25,7 +25,7 @@ Scope is explicit so it can't mass-insert by accident:
     python fill_missing_predictions.py --game-ids 2790,2791 --no-players
         Team predictions only (skip player props).
 
-Options: --season (default 2025-26), --top-n (players per team, default 10).
+Options: --season (default 2026-27), --top-n (players per team, default 10).
 
 Efficiency: games are grouped by date and the model is trained once per date
 (all games on a date share "train on everything before this date"), so filling
@@ -89,7 +89,7 @@ def main():
                     help="fill every completed game lacking a prediction")
     ap.add_argument("--no-players", action="store_true",
                     help="skip player-prop predictions")
-    ap.add_argument("--season", type=str, default="2025-26")
+    ap.add_argument("--season", type=str, default="2026-27")
     ap.add_argument("--top-n", type=int, default=10, help="players per team")
     args = ap.parse_args()
 

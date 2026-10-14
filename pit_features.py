@@ -69,7 +69,8 @@ def load_games(con):
         FROM Games g
         WHERE g.HomeScore IS NOT NULL
           AND g.AwayScore IS NOT NULL
-          AND g.Season IN ('2024-25', '2025-26')
+          AND g.Season IN ('2024-25', '2025-26', '2026-27')
+          AND g.GameType <> 'Preseason'
         ORDER BY g.GameDate ASC, g.GameID ASC
     """).df()
     df["GameDate"] = pd.to_datetime(df["GameDate"])

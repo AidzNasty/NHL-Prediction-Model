@@ -150,10 +150,10 @@ class PlayerModel:
         rows = con.execute("""
             SELECT Season, TeamID, AVG(GA) AS ga_pg FROM (
                 SELECT Season, HomeTeamID AS TeamID, AwayScore AS GA
-                FROM Games WHERE HomeScore IS NOT NULL
+                FROM Games WHERE HomeScore IS NOT NULL AND GameType <> 'Preseason'
                 UNION ALL
                 SELECT Season, AwayTeamID, HomeScore
-                FROM Games WHERE HomeScore IS NOT NULL
+                FROM Games WHERE HomeScore IS NOT NULL AND GameType <> 'Preseason'
             ) GROUP BY Season, TeamID
         """).df()
         self._opp_ga = {(r.Season, int(r.TeamID)): float(r.ga_pg)

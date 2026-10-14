@@ -36,10 +36,6 @@ import duckdb
 from datetime import date, timedelta
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-import sys
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-
 
 load_dotenv()
 
@@ -120,6 +116,7 @@ team_id_to_abbrev = {r[0]: HR_ABBREV.get(r[1], "") for r in team_rows}
 # ============================================================
 where_clauses = [
     "gs.GameID IS NULL",
+    "g.GameType <> 'Preseason'",
     f"g.GameDate <= '{date.today()}'"
 ]
 
