@@ -56,55 +56,8 @@ Chart.js is loaded from a CDN (`cdn.jsdelivr.net`). If you need a fully offline
 build, download `chart.umd.min.js` into `static/` and point the `<script>` in
 `index.html` at the local copy.
 
-## Production deployment
+## Deployment
 
-The app ships with a `Procfile` (repo root) and uses `gunicorn` (in
-`requirements.txt`). Works on Heroku, Railway, Render, Fly.io, etc.
-
-```
-web: gunicorn --chdir web server:app --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
-```
-
-- **1 worker / 8 threads (gthread):** the app holds one MotherDuck connection
-  guarded by a lock, so a single threaded worker keeps exactly one DB connection
-  while still handling concurrent requests. The 5-min cache absorbs most load. To
-  scale out, raise `--workers` (each worker opens its own MotherDuck connection).
-- **`$PORT`** is provided by the platform; `server.py` also honours `PORT` when
-  run directly (`python server.py`).
-
-### Required environment variables (set these in the platform dashboard)
-
-| Var | Value |
-|---|---|
-| `MOTHERDUCK_TOKEN` | your MotherDuck token (do **not** commit it) |
-| `MOTHERDUCK_DB` | `my_db` |
-
-Locally these come from the project `.env`; in production set them as config vars.
-
-### Run the production server locally
-
-```bash
-pip install -r ../requirements.txt          # installs gunicorn
-cd ..                                        # repo root (Procfile location)
-PORT=8000 gunicorn --chdir web server:app --workers 1 --threads 8 --bind 0.0.0.0:8000
-```
-
-### One-click / auto-deploy
-
-Config files live in the repo root — use the one matching your host:
-
-- **Render** — [`render.yaml`](../render.yaml) Blueprint. In Render: *New →
-  Blueprint → connect this repo*. It sets the start command and health check; you
-  add `MOTHERDUCK_TOKEN` as a secret in the dashboard (it's marked `sync: false`).
-- **Railway** — [`railway.json`](../railway.json). Create a project from the repo;
-  Railway auto-detects Python, uses the start command from the file, and deploys on
-  every push. Set `MOTHERDUCK_TOKEN` / `MOTHERDUCK_DB` as service variables.
-- **GitHub Actions** — [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
-  runs on push to `main`: it installs deps and import-checks `server:app`, then
-  triggers a Render deploy. One-time setup: copy your Render **Deploy Hook** URL
-  into a repo secret named `RENDER_DEPLOY_HOOK_URL`. Without that secret the verify
-  step still runs and the deploy step is skipped with a warning. (Railway doesn't
-  need this workflow — it deploys from GitHub natively.)
-
-All paths keep `MOTHERDUCK_TOKEN` in platform config/secrets — never in the repo
-(`.env` is gitignored).
+Not deployed. The live site is the Streamlit app (`app.py`) on Streamlit
+Community Cloud, which redeploys from GitHub `main`. This Flask version runs
+locally only (see **Run** above).

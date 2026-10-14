@@ -59,11 +59,20 @@ def _ot_model():
         subsample=0.8, min_samples_leaf=15, random_state=42)
 
 
-def find_missing_games(con, season, game_ids=None):
-    """Completed games in `season` that have no Predictions row."""
+def find_missing_games(con, season, game_ids=None, need_players=True):
+    """Completed games in `season` that have no Predictions row.
+
+    With player props on, also re-does games that have a team prediction but
+    no player predictions, and waits for a game's PlayerGameLog rows (player
+    props are built from them) so props are never silently skipped."""
     filt = ""
     if game_ids:
         filt = f" AND g.GameID IN ({','.join(map(str, game_ids))})"
+    missing = "g.GameID NOT IN (SELECT GameID FROM Predictions WHERE GameID IS NOT NULL)"
+    if need_players:
+        missing = (f"({missing} OR g.GameID NOT IN "
+                   "(SELECT GameID FROM PlayerPredictions WHERE GameID IS NOT NULL))")
+        filt += " AND EXISTS (SELECT 1 FROM PlayerGameLog pl WHERE pl.GameID = g.GameID)"
     rows = con.execute(f"""
         SELECT g.GameID, g.GameDate, g.HomeTeamID, g.AwayTeamID,
                g.HomeScore, g.AwayScore, COALESCE(g.OvertimeFlag, FALSE),
@@ -72,8 +81,8 @@ def find_missing_games(con, season, game_ids=None):
         FROM Games g
         WHERE g.Season = '{season}'
           AND g.HomeScore IS NOT NULL AND g.AwayScore IS NOT NULL
-          AND g.GameID NOT IN (
-              SELECT GameID FROM Predictions WHERE GameID IS NOT NULL)
+          AND g.GameType <> 'Preseason'
+          AND {missing}
           {filt}
         ORDER BY g.GameDate
     """).fetchall()
@@ -100,7 +109,7 @@ def main():
         ap.error("specify --game-ids, --all-missing, or --dry-run")
 
     con = get_connection()
-    targets = find_missing_games(con, args.season, game_ids)
+    targets = find_missing_games(con, args.season, game_ids, need_players=not args.no_players)
     if not targets:
         print("No completed games missing predictions for the given scope.")
         con.close()
@@ -225,6 +234,11 @@ def main():
         con.close()
         return
 
+    # Replace any existing team-only rows for these games (see find_missing_games)
+    if team_inserts:
+        ids = ",".join(str(r[1]) for r in team_inserts)
+        con.execute(f"DELETE FROM PlayerPredictions WHERE GameID IN ({ids})")
+        con.execute(f"DELETE FROM Predictions WHERE GameID IN ({ids})")
     for row in team_inserts:
         con.execute("""
             INSERT INTO Predictions (
